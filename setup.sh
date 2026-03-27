@@ -483,7 +483,7 @@ do_install() {
     # Step 1: 目录 + 配置文件（全部写到宿主机，容器启动时自动挂载）
     echo ""
     echo -e "  ${BLUE}[1/7]${NC} 创建目录与配置文件..."
-    mkdir -p config workspace skills
+    mkdir -p config workspace skills extensions
 
     # 停止旧容器（避免 file watcher 冲突）
     docker compose down 2>/dev/null || true
@@ -608,10 +608,11 @@ USEREOF
     echo ""
     echo -e "  ${BLUE}[5/7]${NC} 配置通讯频道..."
     if [ "$SETUP_WECHAT" = "yes" ]; then
-        docker exec openclaw-main openclaw plugins install "@tencent-weixin/openclaw-weixin" --force 2>/dev/null && \
+        echo -en "    ${DIM}安装微信插件（约 1-2 分钟）..."
+        docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install 2>/dev/null && \
+            echo -e " 完成${NC}" && \
             print_success "微信插件 openclaw-weixin 已安装" || \
-            print_warn "微信插件安装失败（可稍后手动安装）"
-        docker exec openclaw-main openclaw config set plugins.entries.openclaw-weixin.enabled true 2>/dev/null || true
+            (echo -e " ${NC}" && print_warn "微信插件安装失败（可稍后手动安装）")
         print_warn "微信需扫码授权（见下方说明）"
     else
         print_info "微信未配置，已跳过"
