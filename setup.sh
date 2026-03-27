@@ -313,12 +313,23 @@ step3() {
     echo ""
 
     # Brave Search
-    echo -e "  ${BOLD}🔍 联网搜索（Brave Search）${NC}"
-    print_info "让 AI 能搜索互联网获取最新信息。"
-    print_info "获取方式：https://brave.com/search/api/"
+    echo -e "  ${BOLD}🔍 联网搜索（Brave Search API）${NC}"
+    print_info "让 AI 像用 Google 一样搜索互联网，获取实时信息。"
+    echo ""
+    echo -e "  ${DIM}为什么推荐 Brave Search？${NC}"
+    echo -e "    • 免费额度 2000 次/月，个人使用足够"
+    echo -e "    • 隐私友好，不追踪用户"
+    echo -e "    • OpenClaw 官方内置支持，配置简单"
+    echo ""
+    echo -e "  ${DIM}不配置会怎样？${NC}"
+    echo -e "    • AI 无法主动搜索关键词（如「今天 BTC 价格」）"
+    echo -e "    • 但仍可通过 web-browser Skill 访问指定网页（已自动安装）"
+    echo -e "    • 你给 AI 一个链接，它可以直接读取内容"
+    echo ""
+    echo -e "  ${DIM}获取方式：https://brave.com/search/api/ → 注册 → Free 计划${NC}"
     echo ""
 
-    if confirm "  是否配置搜索？"; then
+    if confirm "  是否配置搜索？" "N"; then
         echo ""
         prompt_secret "Brave Search API Key (BSA_开头)" "$BRAVE_API_KEY" BRAVE_API_KEY
         if [ -n "$BRAVE_API_KEY" ]; then
@@ -328,7 +339,7 @@ step3() {
         fi
     else
         BRAVE_API_KEY=""
-        print_info "已跳过搜索配置（后续可在 .env 中添加）"
+        print_info "已跳过（web-browser Skill 仍可访问网页，后续可在 .env 中添加）"
     fi
 
     echo ""
