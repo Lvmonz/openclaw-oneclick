@@ -480,57 +480,18 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
-    # Step 1: 目录
+    # Step 1: 目录 + 配置文件（全部写到宿主机，容器启动时自动挂载）
     echo ""
-    echo -e "  ${BLUE}[1/7]${NC} 创建目录结构..."
+    echo -e "  ${BLUE}[1/7]${NC} 创建目录与配置文件..."
     mkdir -p config workspace skills
-    print_success "config/ workspace/ skills/ 已创建"
 
-    # Step 2: Docker
-    echo ""
-    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像并启动容器（首次约 2-5 分钟）..."
-    echo -en "    ${DIM}下载中"
-    if docker compose pull 2>&1 | while read -r line; do echo -en "."; done; then
-        echo -e " 完成${NC}"
-    else
-        echo -e " 失败${NC}"
-        print_error "镜像拉取失败，请检查网络连接"
-        print_info "手动重试：docker compose pull"
-        exit 1
-    fi
+    # 停止旧容器（避免 file watcher 冲突）
+    docker compose down 2>/dev/null || true
 
-    echo -en "    ${DIM}启动容器..."
-    if docker compose up -d 2>/dev/null; then
-        echo -e " 完成${NC}"
-    else
-        echo ""
-        print_error "Docker 容器启动失败"
-        print_info "请检查：docker compose logs"
-        exit 1
-    fi
+    # 清理旧的备份文件
+    rm -f config/*.clobbered.* config/*.bak* 2>/dev/null
 
-    # 验证容器是否真的在运行
-    sleep 2
-    if ! docker ps --format '{{.Names}}' | grep -q openclaw-main; then
-        echo ""
-        print_error "容器 openclaw-main 未成功启动"
-        print_info "请检查：docker compose logs"
-        exit 1
-    fi
-    print_success "容器 openclaw-main 已启动"
-
-    # 等待
-    echo ""
-    echo -en "  ${DIM}等待容器就绪"
-    for i in 1 2 3 4 5; do
-        sleep 1
-        echo -en "."
-    done
-    echo -e "${NC}"
-
-    # Step 3: openclaw.json（写入宿主 config/ 目录，自动映射到容器内）
-    echo ""
-    echo -e "  ${BLUE}[3/7]${NC} 生成模型配置 (openclaw.json)..."
+    # 写入 openclaw.json（容器未运行，无 file watcher 冲突）
     cat > config/openclaw.json << JSONEOF
 {
   "models": {
@@ -560,29 +521,8 @@ do_install() {
   }
 }
 JSONEOF
-    print_success "openclaw.json 已写入"
 
-    # 重启容器让新配置生效（避免旧配置残留导致警告刷屏）
-    echo -en "  ${DIM}重载配置"
-    docker restart openclaw-main >/dev/null 2>&1
-    for i in 1 2 3 4 5; do sleep 1; echo -en "."; done
-    echo -e "${NC}"
-
-    # Step 4: MD 模板
-    echo ""
-    echo -e "  ${BLUE}[4/7]${NC} 复制 MD 模板..."
-    if ls templates/*.md 1>/dev/null 2>&1; then
-        for f in templates/*.md; do
-            fname=$(basename "$f")
-            cp "$f" workspace/"$fname" && \
-                print_success "$fname" || \
-                print_warn "$fname 复制失败"
-        done
-    else
-        print_warn "templates/ 目录无 MD 文件，跳过"
-    fi
-
-    # 生成 User.md
+    # 写入 USER.md
     cat > workspace/USER.md << USEREOF
 # User
 
@@ -595,11 +535,63 @@ JSONEOF
 - 偏好简洁直接的沟通
 - 需要时提供完整命令
 USEREOF
-    print_success "USER.md（根据你的信息生成）"
 
-    # Step 5: Skills
+    # 复制 MD 模板
+    if ls templates/*.md 1>/dev/null 2>&1; then
+        for f in templates/*.md; do
+            cp "$f" workspace/"$(basename "$f")" 2>/dev/null
+        done
+    fi
+    print_success "config/ workspace/ skills/ 已创建，配置文件已写入"
+
+    # Step 2: Docker 镜像
     echo ""
-    echo -e "  ${BLUE}[5/7]${NC} 安装核心 Skills..."
+    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次约 2-5 分钟）..."
+    echo -en "    ${DIM}下载中"
+    if docker compose pull 2>&1 | while read -r line; do echo -en "."; done; then
+        echo -e " 完成${NC}"
+    else
+        echo -e " 失败${NC}"
+        print_error "镜像拉取失败，请检查网络连接"
+        print_info "手动重试：docker compose pull"
+        exit 1
+    fi
+
+    # Step 3: 启动容器（自动加载 config/ 中的配置）
+    echo ""
+    echo -e "  ${BLUE}[3/7]${NC} 启动容器..."
+    echo -en "    ${DIM}启动中..."
+    if docker compose up -d 2>/dev/null; then
+        echo -e " 完成${NC}"
+    else
+        echo ""
+        print_error "Docker 容器启动失败"
+        print_info "请检查：docker compose logs"
+        exit 1
+    fi
+
+    # 验证容器是否真的在运行
+    sleep 2
+    if ! docker ps --format '{{.Names}}' | grep -q openclaw-main; then
+        echo ""
+        print_error "容器 openclaw-main 未成功启动"
+        print_info "请检查：docker compose logs"
+        exit 1
+    fi
+    print_success "容器 openclaw-main 已启动"
+
+    # 等待
+    echo ""
+    echo -en "  ${DIM}等待容器就绪"
+    for i in 1 2 3 4 5; do
+        sleep 1
+        echo -en "."
+    done
+    echo -e "${NC}"
+
+    # Step 4: Skills
+    echo ""
+    echo -e "  ${BLUE}[4/7]${NC} 安装核心 Skills..."
     print_info "网页浏览和文件读写为内置功能，无需安装"
     local skills=("brave-search:联网搜索" "summarize:长文摘要" "openclaw-cost-tracker:成本追踪")
     for item in "${skills[@]}"; do
@@ -612,20 +604,24 @@ USEREOF
     print_success "网页浏览（内置 Headless Browser）"
     print_success "文件读写（内置 File System）"
 
-    # Step 6: 微信
+    # Step 5: 微信
     echo ""
-    echo -e "  ${BLUE}[6/7]${NC} 配置通讯频道..."
+    echo -e "  ${BLUE}[5/7]${NC} 配置通讯频道..."
     if [ "$SETUP_WECHAT" = "yes" ]; then
-        # 使用 openclaw 原生命令安装微信插件
         docker exec openclaw-main openclaw plugins install "@tencent-weixin/openclaw-weixin" --force 2>/dev/null && \
             print_success "微信插件 openclaw-weixin 已安装" || \
             print_warn "微信插件安装失败（可稍后手动安装）"
-        # 启用插件
         docker exec openclaw-main openclaw config set plugins.entries.openclaw-weixin.enabled true 2>/dev/null || true
         print_warn "微信需扫码授权（见下方说明）"
     else
         print_info "微信未配置，已跳过"
     fi
+
+    # Step 6: 清理 + 最终重启
+    echo ""
+    echo -e "  ${BLUE}[6/7]${NC} 清理临时文件..."
+    rm -f config/*.clobbered.* config/*.bak* 2>/dev/null
+    print_success "已清理"
 
     # Step 7: 重启容器（确保新配置和插件生效）
     echo ""
