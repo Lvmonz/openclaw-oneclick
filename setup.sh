@@ -456,6 +456,7 @@ THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
 BRAVE_API_KEY=$BRAVE_API_KEY
 TZ=$TZ
+OPENCLAW_GATEWAY_TOKEN=$OPENCLAW_GATEWAY_TOKEN
 
 USER_NAME=$USER_NAME
 USER_LANG=$USER_LANG
@@ -468,6 +469,12 @@ do_install() {
     print_header
     echo -e "  ${BOLD}🚀 开始安装...${NC}"
     echo ""
+
+    # 生成固定 Gateway Token（仅首次安装时生成一次）
+    if [ -z "$OPENCLAW_GATEWAY_TOKEN" ]; then
+        OPENCLAW_GATEWAY_TOKEN=$(openssl rand -hex 24 2>/dev/null || head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 48)
+        export OPENCLAW_GATEWAY_TOKEN
+    fi
 
     # 保存 .env
     save_env
@@ -625,21 +632,14 @@ USEREOF" 2>/dev/null
     sleep 5
     print_success "容器已重启"
 
-    # 提取网关访问密码
-    local GATEWAY_TOKEN=""
-    GATEWAY_TOKEN=$(docker exec openclaw-main bash -c 'cat $HOME/.openclaw/openclaw.json 2>/dev/null' | grep -o '"token": *"[^"]*"' | head -1 | sed 's/"token": *"//;s/"//')
-
     # ==================== 完成 ====================
     echo ""
     echo -e "  ${DIM}════════════════════════════════${NC}"
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789${NC}"
-    if [ -n "$GATEWAY_TOKEN" ]; then
-        echo -e "  ${BOLD}访问密码${NC}:  ${YELLOW}${GATEWAY_TOKEN}${NC}"
-        echo -e "  ${DIM}（打开管理面板时需要输入此密码）${NC}"
-    fi
+    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789/?token=${OPENCLAW_GATEWAY_TOKEN}${NC}"
+    echo -e "  ${DIM}（点击以上链接即可自动登录，无需输入密码）${NC}"
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
     echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
