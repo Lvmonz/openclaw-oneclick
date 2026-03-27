@@ -62,8 +62,8 @@ chmod +x setup.sh
 
 ✅ 安装完成！
 
-管理面板:  http://localhost:18789/#token=xxxxx
-（点击以上链接即可自动登录，无需输入密码）
+开始对话:  docker exec -it openclaw-main openclaw chat
+查看日志:  docker compose logs -f
 ```
 
 ## ⚙️ 交互式配置项
@@ -125,8 +125,8 @@ docker system prune -f   # 可选
 
 ## ❓ 常见问题
 
-**Q: 打开管理面板提示 unauthorized**
-A: 使用安装完成时显示的带 token 的链接（`/#token=xxx`）。如得不到，运行：`docker exec openclaw-main openclaw dashboard --no-open`
+**Q: 如何与 OpenClaw 对话？**
+A: 微信扫码授权后直接微信聊天，或者用 CLI：`docker exec -it openclaw-main openclaw chat`
 
 **Q: `/status` 显示 Provider 为空**
 A: 检查 `.env` 中 `NEWAPI_BASE_URL` 末尾是否有 `/v1`。

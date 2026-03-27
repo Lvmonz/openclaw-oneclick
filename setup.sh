@@ -634,18 +634,18 @@ USEREOF
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789/#token=${OPENCLAW_GATEWAY_TOKEN}${NC}"
-    echo -e "  ${DIM}（点击以上链接即可自动登录，无需输入密码）${NC}"
+    echo -e "  ${BOLD}开始对话${NC}:  docker exec -it openclaw-main openclaw chat"
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
     echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
 
     if [ "$SETUP_WECHAT" = "yes" ]; then
         echo ""
-        echo -e "  ${YELLOW}${BOLD}📱 微信扫码授权${NC}:"
+        echo -e "  ${YELLOW}${BOLD}📱 微信扫码授权（最后一步）${NC}:"
         echo -e "    docker exec -it openclaw-main openclaw channels login --channel openclaw-weixin"
         echo -e "    ${DIM}# 终端会显示二维码${NC}"
         echo -e "    ${DIM}# 手机：微信 → 设置 → 插件 → ClawBot → 扫码 → 确认${NC}"
+        echo -e "    ${DIM}# 扫码完成后即可通过微信与 OpenClaw 对话${NC}"
     fi
 
     echo ""
