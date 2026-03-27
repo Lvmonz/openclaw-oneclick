@@ -50,22 +50,20 @@ chmod +x setup.sh
 ### 预期输出
 
 ```
-🦞 OpenClaw 一键安装脚本
+🦞 OpenClaw 一键安装向导
 ========================
-📦 Step 1: 创建目录结构...
-🐳 Step 2: 启动 Docker 容器...
-📝 Step 3: 生成 openclaw.json...
-📋 Step 4: 复制 MD 模板...
-🔌 Step 5: 安装必装 Skills...
-📱 Step 6: 配置微信通道...
-🔄 Step 7: 重启网关...
+✔ Step 1: 创建目录结构...
+✔ Step 2: 拉取镜像并启动容器...
+✔ Step 3: 生成模型配置...
+✔ Step 4: 复制 MD 模板...
+✔ Step 5: 安装核心 Skills...
+✔ Step 6: 配置微信插件...
+✔ Step 7: 重启容器...
 
 ✅ 安装完成！
-================================
-管理面板: http://localhost:18789
-查看日志: docker compose logs -f
-进入容器: docker exec -it openclaw-main bash
-================================
+
+管理面板:  http://localhost:18789/#token=xxxxx
+（点击以上链接即可自动登录，无需输入密码）
 ```
 
 ## ⚙️ 交互式配置项
@@ -127,14 +125,17 @@ docker system prune -f   # 可选
 
 ## ❓ 常见问题
 
+**Q: 打开管理面板提示 unauthorized**
+A: 使用安装完成时显示的带 token 的链接（`/#token=xxx`）。如得不到，运行：`docker exec openclaw-main openclaw dashboard --no-open`
+
 **Q: `/status` 显示 Provider 为空**
 A: 检查 `.env` 中 `NEWAPI_BASE_URL` 末尾是否有 `/v1`。
 
 **Q: 模型调用返回 400 错误**
-A: 确认 `api` 是 `"anthropic-messages"`，不是 `"openai-completions"`。
+A: 确认 config/openclaw.json 中 `api` 是 `"anthropic-messages"`。
 
 **Q: 想让 AI 访问本地文件**
-A: 在 `docker-compose.yml` 的 `volumes` 中添加 `- ~/Documents:/root/documents:ro`。
+A: 在 `docker-compose.yml` 的 `volumes` 中添加 `- ~/Documents:/home/node/documents:ro`。
 
 ## 📖 完整教程
 

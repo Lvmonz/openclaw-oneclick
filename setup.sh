@@ -634,7 +634,7 @@ USEREOF
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789/?token=${OPENCLAW_GATEWAY_TOKEN}${NC}"
+    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789/#token=${OPENCLAW_GATEWAY_TOKEN}${NC}"
     echo -e "  ${DIM}（点击以上链接即可自动登录，无需输入密码）${NC}"
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
