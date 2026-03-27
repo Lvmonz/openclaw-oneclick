@@ -4,7 +4,7 @@
 # 版本: 1.0.0
 # ============================================
 
-set -e
+# 注意：不使用 set -e，关键步骤手动检查错误
 
 # ==================== 工具函数 ====================
 
@@ -136,7 +136,7 @@ if ! command -v docker &>/dev/null; then
     echo ""
     exit 1
 fi
-print_success "Docker $(docker --version 2>/dev/null | grep -oP 'version \K[0-9.]+')"
+print_success "Docker $(docker --version 2>/dev/null | sed 's/.*version //' | sed 's/,.*//')"
 
 # 检查 Docker Compose
 if ! docker compose version &>/dev/null; then
@@ -146,7 +146,7 @@ if ! docker compose version &>/dev/null; then
     echo ""
     exit 1
 fi
-print_success "Docker Compose $(docker compose version 2>/dev/null | grep -oP 'v\K[0-9.]+')"
+print_success "Docker Compose $(docker compose version 2>/dev/null | sed 's/.*v//')"
 
 # 检查 Docker 是否在运行
 if ! docker info &>/dev/null; then
@@ -552,19 +552,23 @@ do_install() {
     }
   }
 }
-JSONEOF" 2>/dev/null
-    print_success "openclaw.json 已写入"
+JSONEOF" 2>/dev/null && \
+        print_success "openclaw.json 已写入" || \
+        print_warn "openclaw.json 写入失败（容器可能未就绪，稍后手动配置）"
 
     # Step 4: MD 模板
     echo ""
     echo -e "  ${BLUE}[4/7]${NC} 复制 MD 模板..."
-    for f in templates/*.md; do
-        if [ -f "$f" ]; then
+    if ls templates/*.md 1>/dev/null 2>&1; then
+        for f in templates/*.md; do
             fname=$(basename "$f")
-            docker cp "$f" openclaw-main:/root/.openclaw/workspace/"$fname" 2>/dev/null
-            print_success "$fname"
-        fi
-    done
+            docker cp "$f" openclaw-main:/root/.openclaw/workspace/"$fname" 2>/dev/null && \
+                print_success "$fname" || \
+                print_warn "$fname 复制失败"
+        done
+    else
+        print_warn "templates/ 目录无 MD 文件，跳过"
+    fi
 
     # 生成 User.md
     docker exec openclaw-main bash -c "cat > /root/.openclaw/workspace/USER.md << 'USEREOF'
