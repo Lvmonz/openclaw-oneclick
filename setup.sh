@@ -562,6 +562,12 @@ do_install() {
 JSONEOF
     print_success "openclaw.json 已写入"
 
+    # 重启容器让新配置生效（避免旧配置残留导致警告刷屏）
+    echo -en "  ${DIM}重载配置"
+    docker restart openclaw-main >/dev/null 2>&1
+    for i in 1 2 3 4 5; do sleep 1; echo -en "."; done
+    echo -e "${NC}"
+
     # Step 4: MD 模板
     echo ""
     echo -e "  ${BLUE}[4/7]${NC} 复制 MD 模板..."
