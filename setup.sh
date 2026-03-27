@@ -522,9 +522,12 @@ do_install() {
     echo -e "${NC}"
 
     # Step 3: openclaw.json
+    # 检测容器内用户 home 目录
+    CLAW_HOME=$(docker exec openclaw-main bash -c 'echo $HOME' 2>/dev/null || echo "/home/node")
+
     echo ""
     echo -e "  ${BLUE}[3/7]${NC} 生成模型配置 (openclaw.json)..."
-    docker exec openclaw-main bash -c "cat > /root/.openclaw/openclaw.json << 'JSONEOF'
+    docker exec openclaw-main bash -c "mkdir -p ${CLAW_HOME}/.openclaw && cat > ${CLAW_HOME}/.openclaw/openclaw.json << 'JSONEOF'
 {
   \"models\": {
     \"primary\": \"${PRIMARY_MODEL}\",
@@ -571,7 +574,7 @@ JSONEOF" 2>/dev/null && \
     fi
 
     # 生成 User.md
-    docker exec openclaw-main bash -c "cat > /root/.openclaw/workspace/USER.md << 'USEREOF'
+    docker exec openclaw-main bash -c "cat > ${CLAW_HOME}/.openclaw/workspace/USER.md << 'USEREOF'
 # User
 
 ## 基本信息
@@ -588,7 +591,8 @@ USEREOF" 2>/dev/null
     # Step 5: Skills
     echo ""
     echo -e "  ${BLUE}[5/7]${NC} 安装核心 Skills..."
-    local skills=("brave-search:联网搜索" "web-browser:网页浏览" "fs:文件读写" "summarize:长文摘要" "openclaw-cost-tracker:成本追踪")
+    print_info "网页浏览和文件读写为内置功能，无需安装"
+    local skills=("brave-search:联网搜索" "summarize:长文摘要" "openclaw-cost-tracker:成本追踪")
     for item in "${skills[@]}"; do
         local skill_name="${item%%:*}"
         local skill_desc="${item##*:}"
@@ -596,25 +600,30 @@ USEREOF" 2>/dev/null
             print_success "$skill_desc ($skill_name)" || \
             print_warn "$skill_desc ($skill_name) 安装跳过"
     done
+    print_success "网页浏览（内置 Headless Browser）"
+    print_success "文件读写（内置 File System）"
 
     # Step 6: 微信
     echo ""
     echo -e "  ${BLUE}[6/7]${NC} 配置通讯频道..."
     if [ "$SETUP_WECHAT" = "yes" ]; then
-        docker exec openclaw-main bash -c 'npx -y @tencent-weixin/openclaw-weixin-cli install' 2>/dev/null && \
-            print_success "微信插件 @tencent-weixin/openclaw-weixin 已安装" || \
-            print_warn "一键安装失败，尝试手动安装..."
-        # 备用手动安装
-        docker exec openclaw-main bash -c 'openclaw plugins install "@tencent-weixin/openclaw-weixin" && openclaw config set plugins.entries.openclaw-weixin.enabled true' 2>/dev/null || true
+        # 使用 openclaw 原生命令安装微信插件
+        docker exec openclaw-main openclaw plugins install "@tencent-weixin/openclaw-weixin" 2>/dev/null && \
+            print_success "微信插件 openclaw-weixin 已安装" || \
+            print_warn "微信插件安装失败（可稍后手动安装）"
+        # 启用插件
+        docker exec openclaw-main openclaw config set plugins.entries.openclaw-weixin.enabled true 2>/dev/null || true
         print_warn "微信需扫码授权（见下方说明）"
     else
         print_info "微信未配置，已跳过"
     fi
 
-    # Step 7: 重启
+    # Step 7: 重启网关
     echo ""
     echo -e "  ${BLUE}[7/7]${NC} 重启网关..."
-    docker exec openclaw-main openclaw gateway restart 2>/dev/null || true
+    # 容器内使用 stop + 后台启动方式
+    docker exec openclaw-main bash -c 'pkill -f "openclaw gateway" 2>/dev/null; nohup openclaw gateway > /dev/null 2>&1 &' 2>/dev/null || true
+    sleep 2
     print_success "网关已重启"
 
     # ==================== 完成 ====================
