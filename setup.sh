@@ -481,16 +481,27 @@ do_install() {
 
     # Step 2: Docker
     echo ""
-    echo -e "  ${BLUE}[2/7]${NC} 启动 Docker 容器..."
-    if ! docker compose up -d 2>&1 | while read -r line; do
-        echo -e "    ${DIM}$line${NC}"
-    done; then
+    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像并启动容器（首次约 2-5 分钟）..."
+    echo -en "    ${DIM}下载中"
+    if docker compose pull 2>&1 | while read -r line; do echo -en "."; done; then
+        echo -e " 完成${NC}"
+    else
+        echo -e " 失败${NC}"
+        print_error "镜像拉取失败，请检查网络连接"
+        print_info "手动重试：docker compose pull"
+        exit 1
+    fi
+
+    echo -en "    ${DIM}启动容器..."
+    if docker compose up -d 2>/dev/null; then
+        echo -e " 完成${NC}"
+    else
         echo ""
         print_error "Docker 容器启动失败"
-        print_info "常见原因：镜像拉取失败、端口被占用、Docker 未启动"
         print_info "请检查：docker compose logs"
         exit 1
     fi
+
     # 验证容器是否真的在运行
     sleep 2
     if ! docker ps --format '{{.Names}}' | grep -q openclaw-main; then
