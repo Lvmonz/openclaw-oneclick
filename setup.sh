@@ -617,10 +617,16 @@ USEREOF" 2>/dev/null
     else
         print_info "微信未配置，已跳过"
     fi
-
-    # Step 7: 重启容器（确保新配置和插件生效）
+    # Step 7: 配置 Dashboard 权限
     echo ""
-    echo -e "  ${BLUE}[7/7]${NC} 重启容器 (应用配置和插件)..."
+    echo -e "  ${BLUE}[7/8]${NC} 放开本地 Dashboard 权限..."
+    # 允许 Docker 环境下的非 HTTPS 请求带 Token 登录，解决 local 模式下的 token mismatch 报错
+    docker exec openclaw-main openclaw config set gateway.controlUi.allowInsecureAuth true 2>/dev/null || true
+    print_success "前端面板权限已配置"
+
+    # Step 8: 重启容器（确保新配置和插件生效）
+    echo ""
+    echo -e "  ${BLUE}[8/8]${NC} 重启容器 (应用配置和插件)..."
     docker restart openclaw-main >/dev/null
     sleep 3
     print_success "容器已重启"
