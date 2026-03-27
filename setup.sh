@@ -528,43 +528,39 @@ do_install() {
     done
     echo -e "${NC}"
 
-    # Step 3: openclaw.json
-    # 检测容器内用户 home 目录
-    CLAW_HOME=$(docker exec openclaw-main bash -c 'echo $HOME' 2>/dev/null || echo "/home/node")
-
+    # Step 3: openclaw.json（写入宿主 config/ 目录，自动映射到容器内）
     echo ""
     echo -e "  ${BLUE}[3/7]${NC} 生成模型配置 (openclaw.json)..."
-    docker exec openclaw-main bash -c "mkdir -p ${CLAW_HOME}/.openclaw && cat > ${CLAW_HOME}/.openclaw/openclaw.json << 'JSONEOF'
+    cat > config/openclaw.json << JSONEOF
 {
-  \"models\": {
-    \"providers\": {
-      \"new-api\": {
-        \"baseUrl\": \"${NEWAPI_BASE_URL}\",
-        \"apiKey\": \"${NEWAPI_API_KEY}\",
-        \"api\": \"anthropic-messages\",
-        \"models\": [
+  "models": {
+    "providers": {
+      "new-api": {
+        "baseUrl": "${NEWAPI_BASE_URL}",
+        "apiKey": "${NEWAPI_API_KEY}",
+        "api": "anthropic-messages",
+        "models": [
           {
-            \"id\": \"${PRIMARY_MODEL}\",
-            \"name\": \"Primary Model\"
+            "id": "${PRIMARY_MODEL}",
+            "name": "Primary Model"
           },
           {
-            \"id\": \"${THINKING_MODEL}\",
-            \"name\": \"Thinking Model\",
-            \"reasoning\": true
+            "id": "${THINKING_MODEL}",
+            "name": "Thinking Model",
+            "reasoning": true
           }
         ]
       }
     }
   },
-  \"agents\": {
-    \"defaults\": {
-      \"model\": \"new-api/${PRIMARY_MODEL}\"
+  "agents": {
+    "defaults": {
+      "model": "new-api/${PRIMARY_MODEL}"
     }
   }
 }
-JSONEOF" 2>/dev/null && \
-        print_success "openclaw.json 已写入" || \
-        print_warn "openclaw.json 写入失败（容器可能未就绪，稍后手动配置）"
+JSONEOF
+    print_success "openclaw.json 已写入"
 
     # Step 4: MD 模板
     echo ""
@@ -572,7 +568,7 @@ JSONEOF" 2>/dev/null && \
     if ls templates/*.md 1>/dev/null 2>&1; then
         for f in templates/*.md; do
             fname=$(basename "$f")
-            docker cp "$f" openclaw-main:/root/.openclaw/workspace/"$fname" 2>/dev/null && \
+            cp "$f" workspace/"$fname" && \
                 print_success "$fname" || \
                 print_warn "$fname 复制失败"
         done
@@ -581,7 +577,7 @@ JSONEOF" 2>/dev/null && \
     fi
 
     # 生成 User.md
-    docker exec openclaw-main bash -c "cat > ${CLAW_HOME}/.openclaw/workspace/USER.md << 'USEREOF'
+    cat > workspace/USER.md << USEREOF
 # User
 
 ## 基本信息
@@ -592,7 +588,7 @@ JSONEOF" 2>/dev/null && \
 ## 工作习惯
 - 偏好简洁直接的沟通
 - 需要时提供完整命令
-USEREOF" 2>/dev/null
+USEREOF
     print_success "USER.md（根据你的信息生成）"
 
     # Step 5: Skills
