@@ -617,22 +617,17 @@ USEREOF" 2>/dev/null
     else
         print_info "微信未配置，已跳过"
     fi
-    # Step 7: 配置 Dashboard 权限
-    echo ""
-    echo -e "  ${BLUE}[7/8]${NC} 放开本地 Dashboard 权限..."
-    # 允许 Docker 环境下的非 HTTPS 请求带 Token 登录，解决 local 模式下的 token mismatch 报错
-    docker exec openclaw-main openclaw config set gateway.controlUi.allowInsecureAuth true 2>/dev/null || true
-    print_success "前端面板权限已配置"
 
-    # Step 8: 重启容器（确保新配置和插件生效）
+    # Step 7: 重启容器（确保新配置和插件生效）
     echo ""
-    echo -e "  ${BLUE}[8/8]${NC} 重启容器 (应用配置和插件)..."
+    echo -e "  ${BLUE}[7/7]${NC} 重启容器 (应用配置和插件)..."
     docker restart openclaw-main >/dev/null
-    sleep 3
+    sleep 5
     print_success "容器已重启"
 
-    # Step 8: 获取登录 Token
-    local AUTH_TOKEN=$(docker exec openclaw-main bash -c "grep '\"token\":' /home/node/.openclaw/openclaw.json | grep -v '__OPENCLAW_REDACTED__' | cut -d '\"' -f 4 | head -1" 2>/dev/null || true)
+    # 提取网关访问密码
+    local GATEWAY_TOKEN=""
+    GATEWAY_TOKEN=$(docker exec openclaw-main bash -c 'cat $HOME/.openclaw/openclaw.json 2>/dev/null' | grep -o '"token": *"[^"]*"' | head -1 | sed 's/"token": *"//;s/"//')
 
     # ==================== 完成 ====================
     echo ""
@@ -640,25 +635,21 @@ USEREOF" 2>/dev/null
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    if [ -n "$AUTH_TOKEN" ]; then
-        echo -e "  ${BOLD}🚀 免密码进入管理面板 (点击直接进入)${NC}:"
-        echo -e "  ${CYAN}http://localhost:18789/?token=${AUTH_TOKEN}${NC}"
-    else
-        echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789${NC}"
+    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789${NC}"
+    if [ -n "$GATEWAY_TOKEN" ]; then
+        echo -e "  ${BOLD}访问密码${NC}:  ${YELLOW}${GATEWAY_TOKEN}${NC}"
+        echo -e "  ${DIM}（打开管理面板时需要输入此密码）${NC}"
     fi
-    echo ""
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
-    echo -e "  ${BOLD}查看状态${NC}:  在本地对话中输入 /status"
+    echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
 
     if [ "$SETUP_WECHAT" = "yes" ]; then
         echo ""
         echo -e "  ${YELLOW}${BOLD}📱 微信扫码授权${NC}:"
-        echo -e "    docker exec -it openclaw-main bash"
-        echo -e "    openclaw channels login --channel openclaw-weixin"
+        echo -e "    docker exec -it openclaw-main openclaw channels login --channel openclaw-weixin"
         echo -e "    ${DIM}# 终端会显示二维码${NC}"
         echo -e "    ${DIM}# 手机：微信 → 设置 → 插件 → ClawBot → 扫码 → 确认${NC}"
-        echo -e "    exit"
     fi
 
     echo ""
