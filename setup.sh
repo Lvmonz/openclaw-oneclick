@@ -164,7 +164,7 @@ NEWAPI_BASE_URL=""
 NEWAPI_API_KEY=""
 PRIMARY_MODEL="claude-sonnet-4-20260514"
 THINKING_MODEL="claude-opus-4-20260514"
-CLAWCHAT_API_KEY=""
+SETUP_WECHAT="no"
 BRAVE_API_KEY=""
 USER_NAME=""
 USER_LANG="中文"
@@ -297,33 +297,17 @@ step3() {
     print_step 3 "可选功能配置"
 
     # 微信
-    echo -e "  ${BOLD}📱 个人微信接入（ClawChat）${NC}"
-    print_info "通过 ClawChat 小程序接入个人微信，安全不封号。"
-    print_info "获取方式：微信搜索「ClawChat」→ 创建 Bot → 复制 Key"
+    echo -e "  ${BOLD}📱 个人微信接入（官方 ClawBot 插件）${NC}"
+    print_info "通过微信 iOS 8.0.70+ 内置 ClawBot 插件接入，官方支持，安全不封号。"
+    print_info "前置条件：微信 → 设置 → 插件 中能看到 ClawBot 入口"
     echo ""
 
     if confirm "  是否配置微信？"; then
-        echo ""
-        while true; do
-            prompt_secret "ClawChat API Key (bot_id:secret)" "$CLAWCHAT_API_KEY" CLAWCHAT_API_KEY
-
-            if [ -z "$CLAWCHAT_API_KEY" ]; then
-                print_warn "已跳过微信配置"
-                break
-            fi
-
-            if [[ ! "$CLAWCHAT_API_KEY" =~ : ]]; then
-                print_error "格式不正确，应该包含冒号分隔的 bot_id:secret"
-                CLAWCHAT_API_KEY=""
-                continue
-            fi
-
-            print_success "微信 Key 已记录"
-            break
-        done
+        SETUP_WECHAT="yes"
+        print_success "将在安装阶段配置微信插件（需扫码授权）"
     else
-        CLAWCHAT_API_KEY=""
-        print_info "已跳过微信配置（后续可在 .env 中添加）"
+        SETUP_WECHAT="no"
+        print_info "已跳过微信配置（后续可手动安装）"
     fi
 
     echo ""
@@ -400,8 +384,8 @@ step5() {
     echo -e "    Thinking:  ${BOLD}$THINKING_MODEL${NC}"
     echo ""
     echo -e "  ${CYAN}可选功能${NC}"
-    if [ -n "$CLAWCHAT_API_KEY" ]; then
-        echo -e "    微信:      ${GREEN}✔ 已配置${NC}"
+    if [ "$SETUP_WECHAT" = "yes" ]; then
+        echo -e "    微信:      ${GREEN}✔ 安装后扫码授权${NC}"
     else
         echo -e "    微信:      ${DIM}未配置${NC}"
     fi
@@ -458,7 +442,7 @@ NEWAPI_BASE_URL=$NEWAPI_BASE_URL
 NEWAPI_API_KEY=$NEWAPI_API_KEY
 PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
-CLAWCHAT_API_KEY=$CLAWCHAT_API_KEY
+SETUP_WECHAT=$SETUP_WECHAT
 BRAVE_API_KEY=$BRAVE_API_KEY
 TZ=$TZ
 
@@ -576,11 +560,13 @@ USEREOF" 2>/dev/null
     # Step 6: 微信
     echo ""
     echo -e "  ${BLUE}[6/7]${NC} 配置通讯频道..."
-    if [ -n "$CLAWCHAT_API_KEY" ] && [ "$CLAWCHAT_API_KEY" != "bot_id:secret" ]; then
-        docker exec openclaw-main openclaw plugins install openclawwechat 2>/dev/null && \
-            print_success "微信插件已安装" || \
-            print_warn "微信插件安装跳过"
-        print_warn "微信需手动完成最后一步（见下方说明）"
+    if [ "$SETUP_WECHAT" = "yes" ]; then
+        docker exec openclaw-main bash -c 'npx -y @tencent-weixin/openclaw-weixin-cli install' 2>/dev/null && \
+            print_success "微信插件 @tencent-weixin/openclaw-weixin 已安装" || \
+            print_warn "一键安装失败，尝试手动安装..."
+        # 备用手动安装
+        docker exec openclaw-main bash -c 'openclaw plugins install "@tencent-weixin/openclaw-weixin" && openclaw config set plugins.entries.openclaw-weixin.enabled true' 2>/dev/null || true
+        print_warn "微信需扫码授权（见下方说明）"
     else
         print_info "微信未配置，已跳过"
     fi
@@ -602,12 +588,13 @@ USEREOF" 2>/dev/null
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
     echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
 
-    if [ -n "$CLAWCHAT_API_KEY" ] && [ "$CLAWCHAT_API_KEY" != "bot_id:secret" ]; then
+    if [ "$SETUP_WECHAT" = "yes" ]; then
         echo ""
-        echo -e "  ${YELLOW}${BOLD}📱 微信最后一步${NC}:"
+        echo -e "  ${YELLOW}${BOLD}📱 微信扫码授权${NC}:"
         echo -e "    docker exec -it openclaw-main bash"
-        echo -e "    cd ~/.openclaw/extensions/openclawwechat"
-        echo -e "    npm run config-init   ${DIM}# 粘贴你的 bot_id:secret${NC}"
+        echo -e "    openclaw channels login --channel openclaw-weixin"
+        echo -e "    ${DIM}# 终端会显示二维码${NC}"
+        echo -e "    ${DIM}# 手机：微信 → 设置 → 插件 → ClawBot → 扫码 → 确认${NC}"
         echo -e "    openclaw gateway restart"
         echo -e "    exit"
     fi
