@@ -626,7 +626,7 @@ USEREOF" 2>/dev/null
     print_success "容器已重启"
 
     # Step 8: 获取登录 Token
-    local AUTH_TOKEN=$(docker exec openclaw-main bash -c "grep '\"token\"' /home/node/.openclaw/openclaw.json | grep -v '__OPENCLAW_REDACTED__' | cut -d '\"' -f 4 | head -1" 2>/dev/null || true)
+    local AUTH_TOKEN=$(docker exec openclaw-main bash -c "grep '\"token\":' /home/node/.openclaw/openclaw.json | grep -v '__OPENCLAW_REDACTED__' | cut -d '\"' -f 4 | head -1" 2>/dev/null || true)
 
     # ==================== 完成 ====================
     echo ""
