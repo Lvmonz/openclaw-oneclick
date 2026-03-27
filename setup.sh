@@ -530,28 +530,28 @@ do_install() {
     docker exec openclaw-main bash -c "mkdir -p ${CLAW_HOME}/.openclaw && cat > ${CLAW_HOME}/.openclaw/openclaw.json << 'JSONEOF'
 {
   \"models\": {
-    \"primary\": \"${PRIMARY_MODEL}\",
-    \"thinking\": \"${THINKING_MODEL}\",
     \"providers\": {
       \"new-api\": {
         \"baseUrl\": \"${NEWAPI_BASE_URL}\",
         \"apiKey\": \"${NEWAPI_API_KEY}\",
         \"api\": \"anthropic-messages\",
-        \"cacheRetention\": \"short\",
-        \"contextWindow\": 200000,
-        \"maxTokens\": 8192
+        \"models\": [
+          {
+            \"id\": \"${PRIMARY_MODEL}\",
+            \"name\": \"Primary Model\"
+          },
+          {
+            \"id\": \"${THINKING_MODEL}\",
+            \"name\": \"Thinking Model\",
+            \"reasoning\": true
+          }
+        ]
       }
     }
   },
   \"agents\": {
     \"defaults\": {
-      \"contextTokens\": 100000,
-      \"heartbeat\": {
-        \"intervalMinutes\": 15
-      },
-      \"memory\": {
-        \"dailyLogLookback\": 2
-      }
+      \"model\": \"new-api/${PRIMARY_MODEL}\"
     }
   }
 }
