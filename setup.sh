@@ -625,16 +625,25 @@ USEREOF" 2>/dev/null
     sleep 3
     print_success "容器已重启"
 
+    # Step 8: 获取登录 Token
+    local AUTH_TOKEN=$(docker exec openclaw-main bash -c "grep '\"token\"' /home/node/.openclaw/openclaw.json | grep -v '__OPENCLAW_REDACTED__' | cut -d '\"' -f 4 | head -1" 2>/dev/null || true)
+
     # ==================== 完成 ====================
     echo ""
     echo -e "  ${DIM}════════════════════════════════${NC}"
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789${NC}"
+    if [ -n "$AUTH_TOKEN" ]; then
+        echo -e "  ${BOLD}🚀 免密码进入管理面板 (点击直接进入)${NC}:"
+        echo -e "  ${CYAN}http://localhost:18789/?token=${AUTH_TOKEN}${NC}"
+    else
+        echo -e "  ${BOLD}管理面板${NC}:  ${CYAN}http://localhost:18789${NC}"
+    fi
+    echo ""
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
-    echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
+    echo -e "  ${BOLD}查看状态${NC}:  在本地对话中输入 /status"
 
     if [ "$SETUP_WECHAT" = "yes" ]; then
         echo ""
