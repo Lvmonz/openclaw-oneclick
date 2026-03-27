@@ -62,7 +62,7 @@ chmod +x setup.sh
 
 ✅ 安装完成！
 
-开始对话:  docker exec -it openclaw-main openclaw agent
+CLI 对话:  docker exec -it openclaw-main openclaw agent -m "你的问题"
 查看日志:  docker compose logs -f
 ```
 
@@ -126,7 +126,7 @@ docker system prune -f   # 可选
 ## ❓ 常见问题
 
 **Q: 如何与 OpenClaw 对话？**
-A: 微信扫码授权后直接微信聊天，或者用 CLI：`docker exec -it openclaw-main openclaw agent`
+A: 微信扫码授权后直接微信聊天，或者用 CLI：`docker exec -it openclaw-main openclaw agent -m "你的问题"`
 
 **Q: `/status` 显示 Provider 为空**
 A: 检查 `.env` 中 `NEWAPI_BASE_URL` 末尾是否有 `/v1`。

@@ -637,7 +637,7 @@ USEREOF
     echo ""
     echo -e "  ${GREEN}${BOLD}✅ 安装完成！${NC}"
     echo ""
-    echo -e "  ${BOLD}开始对话${NC}:  docker exec -it openclaw-main openclaw agent"
+    echo -e "  ${BOLD}CLI 对话${NC}:  docker exec -it openclaw-main openclaw agent -m \"你的问题\""
     echo -e "  ${BOLD}查看日志${NC}:  docker compose logs -f"
     echo -e "  ${BOLD}进入容器${NC}:  docker exec -it openclaw-main bash"
     echo -e "  ${BOLD}查看状态${NC}:  在对话中输入 /status"
