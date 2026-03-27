@@ -618,13 +618,12 @@ USEREOF" 2>/dev/null
         print_info "微信未配置，已跳过"
     fi
 
-    # Step 7: 重启网关
+    # Step 7: 重启容器（确保新配置和插件生效）
     echo ""
-    echo -e "  ${BLUE}[7/7]${NC} 重启网关..."
-    # 容器内使用 stop + 后台启动方式
-    docker exec openclaw-main bash -c 'pkill -f "openclaw gateway" 2>/dev/null; nohup openclaw gateway > /dev/null 2>&1 &' 2>/dev/null || true
-    sleep 2
-    print_success "网关已重启"
+    echo -e "  ${BLUE}[7/7]${NC} 重启容器 (应用配置和插件)..."
+    docker restart openclaw-main >/dev/null
+    sleep 3
+    print_success "容器已重启"
 
     # ==================== 完成 ====================
     echo ""
@@ -644,7 +643,6 @@ USEREOF" 2>/dev/null
         echo -e "    openclaw channels login --channel openclaw-weixin"
         echo -e "    ${DIM}# 终端会显示二维码${NC}"
         echo -e "    ${DIM}# 手机：微信 → 设置 → 插件 → ClawBot → 扫码 → 确认${NC}"
-        echo -e "    openclaw gateway restart"
         echo -e "    exit"
     fi
 
