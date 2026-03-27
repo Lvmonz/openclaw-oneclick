@@ -9,7 +9,7 @@
 - 双模型路由 + Prompt 缓存优化
 - Soul / User / Agents MD 模板初始化
 - 5 个核心 Skills 自动安装
-- 个人微信（ClawChat）接入
+- 个人微信（官方 ClawBot 插件扫码接入）
 - 网关自动重启
 
 ## 📦 文件说明
@@ -33,21 +33,19 @@ openclaw-oneclick/
 - Docker Desktop（[下载地址](https://docker.com/get-started)）
 - 模型 API Key（推荐通过 [New-api](https://github.com/Calcium-Ion/new-api) 管理）
 
-### 3 步安装
+### 2 步安装
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/Lvmonz/openclaw-oneclick.git
 cd openclaw-oneclick
 
-# 2. 配置环境变量（唯一需要手动填写的步骤）
-cp .env.example .env
-nano .env   # 填入你的 API Key 等配置
-
-# 3. 运行安装
+# 2. 运行交互式安装向导（会引导你填写所有配置）
 chmod +x setup.sh
 ./setup.sh
 ```
+
+> 💡 无需手动编辑 `.env`——脚本会一步步引导你填写 API Key、选择模型、配置微信等。
 
 ### 预期输出
 
@@ -70,17 +68,18 @@ chmod +x setup.sh
 ================================
 ```
 
-## ⚙️ .env 配置说明
+## ⚙️ 交互式配置项
 
-| 变量 | 必填 | 说明 |
+安装向导会依次引导你完成 5 步配置：
+
+| Step | 内容 | 说明 |
 |------|------|------|
-| `NEWAPI_BASE_URL` | ✅ | New-api 地址，末尾必须有 `/v1` |
-| `NEWAPI_API_KEY` | ✅ | New-api 生成的 Token |
-| `PRIMARY_MODEL` | ✅ | 日常对话模型 |
-| `THINKING_MODEL` | ✅ | 深度推理模型 |
-| `CLAWCHAT_API_KEY` | ❌ | ClawChat 微信机器人 Key |
-| `BRAVE_API_KEY` | ❌ | Brave Search API Key |
-| `USER_NAME` | ❌ | 你的名字（写入 User.md） |
+| 1 | 模型供应商 | New-api Base URL + API Key（必填，自动校验格式）|
+| 2 | 模型选择 | 3 种预置组合可选，也支持自定义 |
+| 3 | 微信接入 | 官方 ClawBot 插件，安装后扫码授权（可选）|
+| 3 | 联网搜索 | Brave Search API，免费 2000 次/月（可选，不装仍可通过 web-browser 访问网页）|
+| 4 | 用户信息 | 名字、语言、时区（用于生成 User.md）|
+| 5 | 确认总览 | 可跳回任意步骤修改，Ctrl+C 随时退出（配置自动保存）|
 
 ## 📋 日常操作
 
