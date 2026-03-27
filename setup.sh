@@ -596,7 +596,7 @@ USEREOF" 2>/dev/null
     for item in "${skills[@]}"; do
         local skill_name="${item%%:*}"
         local skill_desc="${item##*:}"
-        docker exec openclaw-main openclaw skills install "$skill_name" 2>/dev/null && \
+        docker exec openclaw-main openclaw skills install "$skill_name" --force 2>/dev/null && \
             print_success "$skill_desc ($skill_name)" || \
             print_warn "$skill_desc ($skill_name) 安装跳过"
     done
@@ -608,7 +608,7 @@ USEREOF" 2>/dev/null
     echo -e "  ${BLUE}[6/7]${NC} 配置通讯频道..."
     if [ "$SETUP_WECHAT" = "yes" ]; then
         # 使用 openclaw 原生命令安装微信插件
-        docker exec openclaw-main openclaw plugins install "@tencent-weixin/openclaw-weixin" 2>/dev/null && \
+        docker exec openclaw-main openclaw plugins install "@tencent-weixin/openclaw-weixin" --force 2>/dev/null && \
             print_success "微信插件 openclaw-weixin 已安装" || \
             print_warn "微信插件安装失败（可稍后手动安装）"
         # 启用插件
