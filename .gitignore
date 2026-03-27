@@ -1,0 +1,6 @@
+.env
+config/
+workspace/
+skills/
+*.tar.gz
+*.gpg

@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  openclaw:
+    image: openclaw/openclaw:latest
+    container_name: openclaw-main
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    volumes:
+      - ./config:/root/.openclaw
+      - ./workspace:/root/.openclaw/workspace
+      - ./skills:/root/.openclaw/skills
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-Asia/Shanghai}
