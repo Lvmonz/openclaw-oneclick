@@ -1,8 +1,7 @@
-version: '3.8'
 
 services:
   openclaw:
-    image: openclaw/openclaw:latest
+    image: ghcr.io/openclaw/openclaw:latest
     container_name: openclaw-main
     restart: unless-stopped
     ports:

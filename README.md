@@ -120,7 +120,7 @@ cd ~/openclaw-oneclick && docker compose up -d
 ```bash
 cd ~/openclaw-oneclick
 docker compose down -v
-docker rmi openclaw/openclaw:latest
+docker rmi ghcr.io/openclaw/openclaw:latest
 cd ~ && rm -rf ~/openclaw-oneclick
 docker system prune -f   # 可选
 ```
