@@ -79,7 +79,7 @@ CLI 对话:  docker exec -it openclaw-main openclaw agent -m "你的问题"
 | 1 | 模型供应商 | New-api Base URL + API Key（必填，自动校验格式）|
 | 2 | 模型选择 | 3 种预置组合可选，也支持自定义 |
 | 3 | 微信接入 | 官方 ClawBot 插件，安装后扫码授权（可选）|
-| 3 | Chrome CDP | 浏览器远程控制，先运行 `./start-chrome-debug.sh`（可选）|
+| 3 | Chrome CDP | 浏览器远程控制，安装时自动启动 Chrome 调试模式（可选）|
 | 3 | 联网搜索 | Brave Search API，免费 2000 次/月（可选）|
 | 4 | 用户信息 | 名字、语言、时区（用于生成 User.md）|
 | 5 | 确认总览 | 可跳回任意步骤修改，Ctrl+C 随时退出 |

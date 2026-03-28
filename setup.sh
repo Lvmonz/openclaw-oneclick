@@ -754,6 +754,39 @@ SOULEOF
     sleep 5
     print_success "容器已重启"
 
+    # 如果启用了 CDP，自动启动 Chrome 调试模式
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo ""
+        echo -e "  ${BOLD}🌐 启动 Chrome 远程调试模式...${NC}"
+
+        local chrome_bin=""
+        if [ "$(uname)" = "Darwin" ]; then
+            chrome_bin="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        elif command -v google-chrome &>/dev/null; then
+            chrome_bin="google-chrome"
+        elif command -v chromium-browser &>/dev/null; then
+            chrome_bin="chromium-browser"
+        elif command -v chromium &>/dev/null; then
+            chrome_bin="chromium"
+        fi
+
+        if [ -n "$chrome_bin" ] && ([ -f "$chrome_bin" ] || command -v "$chrome_bin" &>/dev/null); then
+            "$chrome_bin" --remote-debugging-port=9222 --remote-allow-origins="*" --no-first-run --no-default-browser-check >/dev/null 2>&1 &
+            sleep 2
+            if curl -s "http://localhost:9222/json/version" > /dev/null 2>&1; then
+                print_success "Chrome 调试模式已启动（端口 9222）"
+                print_info "AI 现在可以通过 CDP 控制你的浏览器"
+                print_info "关闭 Chrome 即可断开 AI 的浏览器控制"
+            else
+                print_warn "Chrome 启动失败，可能有其他 Chrome 实例占用端口"
+                print_info "请关闭所有 Chrome 后运行：./start-chrome-debug.sh"
+            fi
+        else
+            print_warn "未找到 Chrome，请先安装 Google Chrome"
+            print_info "安装后运行：./start-chrome-debug.sh"
+        fi
+    fi
+
     # ==================== 完成 ====================
     echo ""
     echo -e "  ${DIM}════════════════════════════════${NC}"
@@ -772,6 +805,13 @@ SOULEOF
         echo -e "    ${DIM}# 终端会显示二维码${NC}"
         echo -e "    ${DIM}# 手机：微信 → 设置 → 插件 → ClawBot → 扫码 → 确认${NC}"
         echo -e "    ${DIM}# 扫码完成后即可通过微信与 OpenClaw 对话${NC}"
+    fi
+
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo ""
+        echo -e "  ${YELLOW}${BOLD}🌐 浏览器控制${NC}:"
+        echo -e "    ${DIM}# Chrome 调试模式已在后台运行${NC}"
+        echo -e "    ${DIM}# 重启电脑后需要重新运行：./start-chrome-debug.sh${NC}"
     fi
 
     echo ""
