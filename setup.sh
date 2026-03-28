@@ -552,6 +552,9 @@ do_install() {
     "defaults": {
       "model": "new-api/${PRIMARY_MODEL}"
     }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
   }
 }
 JSONEOF
@@ -584,15 +587,35 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- **用户已开启浏览器远程控制**
-- 宿主机运行了 Chrome Bridge 服务，你可以按需启动/关闭 Chrome
+        chrome_section="- **用户已开启浏览器远程控制（Chrome Bridge + CDP）**
+
+#### 重要：不要使用 browser 工具
+容器内没有浏览器二进制文件。OpenClaw 内置的 browser 工具会报错 'No supported browser found'。
+一切浏览器操作通过 curl 调用 CDP API 完成。
+
+#### Chrome Bridge API（管理 Chrome 生命周期）
 - 启动 Chrome：curl http://host.docker.internal:9223/start
 - 关闭 Chrome：curl http://host.docker.internal:9223/stop
 - 查看状态：curl http://host.docker.internal:9223/status
-- Chrome 启动后，通过 CDP 连接：http://host.docker.internal:9222
-- Playwright 连接方式：playwright.chromium.connectOverCDP('http://host.docker.internal:9222')
-- 支持：点击、输入、截图、导航、执行 JavaScript、读取页面内容
-- 注意：Chrome 使用独立 profile，没有用户的登录态。需要登录时请让用户手动登录"
+
+#### CDP API（操作浏览器）
+⚠️ 关键：所有 CDP 请求必须添加 -H 'Host: localhost'，否则 Chrome 安全机制会拒绝请求。
+
+- 列出所有标签页：
+  curl -s -H 'Host: localhost' http://host.docker.internal:9222/json/list
+- 打开新标签页（注意用 PUT 不是 GET）：
+  curl -s -X PUT -H 'Host: localhost' 'http://host.docker.internal:9222/json/new?https://www.baidu.com'
+- 获取页面内容（通过 WebSocket 发送 CDP 命令）：
+  先从 /json/list 获取页面的 webSocketDebuggerUrl，然后用 wscat 或代码连接
+- 关闭标签页：
+  curl -s -H 'Host: localhost' 'http://host.docker.internal:9222/json/close/{targetId}'
+- 查看 Chrome 版本：
+  curl -s -H 'Host: localhost' http://host.docker.internal:9222/json/version
+
+#### 注意事项
+- Chrome 使用独立 profile（/tmp/chrome-cdp-profile），没有用户的登录态
+- 需要登录时请让用户在弹出的 Chrome 窗口中手动登录
+- 不要尝试用 Playwright connectOverCDP，会因 Host 头限制失败"
     else
         chrome_section="- 你没有可用的浏览器，只能通过 fetch/curl 获取网页内容（无 JS 渲染）
 - 用户未开启浏览器远程控制
