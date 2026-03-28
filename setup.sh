@@ -796,10 +796,9 @@ ${chrome_section}
 SOULEOF
     print_success "配置文件已准备"
 
-    # Step 2: Docker 镜像
-    echo ""
-    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次约 2-5 分钟，请耐心等待）..."
-    if docker compose pull -q; then
+    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
+    echo -e "    ${DIM}以下是实时下载进度（显示 MB）：${NC}"
+    if docker compose pull; then
         print_success "镜像已就绪"
     else
         echo -e " 失败${NC}"
