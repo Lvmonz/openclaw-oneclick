@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   openclaw-core:
     image: ghcr.io/openclaw/openclaw:latest
