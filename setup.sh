@@ -798,10 +798,9 @@ SOULEOF
 
     # Step 2: Docker 镜像
     echo ""
-    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次约 2-5 分钟）..."
-    echo -en "    ${DIM}下载中"
-    if docker compose pull 2>&1 | while read -r line; do echo -en "."; done; then
-        echo -e " 完成${NC}"
+    echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次约 2-5 分钟，请耐心等待）..."
+    if docker compose pull -q; then
+        print_success "镜像已就绪"
     else
         echo -e " 失败${NC}"
         print_error "镜像拉取失败，请检查网络连接"
