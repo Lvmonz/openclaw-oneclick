@@ -99,6 +99,7 @@ Docker Volume: openclaw-data ──> /home/node/.openclaw/
 ```
 
 - **配置注入**：`setup.sh` 写临时文件 → 启动容器 → `docker cp` 注入 → 重启生效
+- **SOUL.md 动态生成**：根据用户配置（如 Chrome 共享是否开启）动态注入运行环境信息，让 AI 知道自己在 Docker 中运行、能访问哪些资源
 - **数据隔离**：每个容器有独立的 Docker 命名卷，互不干扰
 - **清空重装**：`./setup.sh` 自动删除旧卷，从零开始
 
