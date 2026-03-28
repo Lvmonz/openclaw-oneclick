@@ -607,12 +607,13 @@ USEREOF
 ## 运行环境
 你运行在 Docker 容器中，而非用户的本地主机。需要注意：
 - **工作目录**：你的文件在 /home/node/.openclaw/workspace/，这是容器内的独立空间
-- **网络**：你可以正常访问互联网（搜索、调 API、浏览网页）
+- **网络**：你可以发 HTTP 请求和调 API，但容器内没有浏览器二进制文件
 - **宿主机文件系统**：你无法直接访问用户宿主机的文件，除非通过 Volume 挂载
 - **Docker 命令**：你无法在容器内运行 docker 命令来管理自身
 - **包管理**：你可以使用 npm、npx，但 apt-get 需要 root 权限，尽量避免
 
 ### 浏览器能力
+容器内没有安装任何浏览器。你唯一能操控浏览器的方式是通过 CDP（Chrome DevTools Protocol）连接用户宿主机上的 Chrome。
 ${chrome_section}
 
 ## 沟通风格
