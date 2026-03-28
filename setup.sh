@@ -457,20 +457,20 @@ step3() {
 
     echo ""
 
-    # 浏览器功能
-    echo -e "  ${BOLD}🌐 浏览器功能${NC}"
-    print_info "在容器内安装 Chromium（headless），AI 可以直接浏览网页。"
-    print_info "支持：打开网页、截图、点击、输入、执行 JavaScript。"
+    # 浏览器功能 (Sidecar 架构)
+    echo -e "  ${BOLD}🌐 浏览器功能 (独立 Sidecar 架构)${NC}"
+    print_info "为提供极高稳定性和【持久化登录态】，将启动一个独立的 Chromium 容器。"
+    print_info "核心优势：即便删除重装 OpenClaw 大脑，你在推特/微信等网页的登录状态也会永久保留！"
     echo ""
-    print_info "安装 Chromium 会增加约 200-400MB 容器空间。"
+    print_warn "⚠️ 警告：独立的浏览器容器需要额外分配资源（建议预留 2GB 内存以防网页崩溃）。"
     echo ""
 
-    if confirm "  是否安装浏览器功能？"; then
+    if confirm "  是否启用独立浏览器 (Sidecar) 功能？"; then
         SHARE_CHROME="yes"
-        print_success "将在安装阶段安装 Chromium"
+        print_success "将在安装阶段编排独立的浏览器容器"
     else
         SHARE_CHROME="no"
-        print_info "已跳过浏览器控制"
+        print_info "已跳过浏览器功能"
     fi
 
     echo ""
@@ -628,6 +628,13 @@ USER_NAME=$USER_NAME
 USER_LANG=$USER_LANG
 EOF
 
+    # 根据 SHARE_CHROME 设置 CDP 连接地址
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo "CHROME_CDP_URL=ws://openclaw-browser:9222" >> .env
+    else
+        echo "CHROME_CDP_URL=" >> .env
+    fi
+
 }
 
 # ==================== 执行安装 ====================
@@ -657,7 +664,19 @@ do_install() {
     # 仅在 --clean 参数时销毁数据卷（否则保留插件/skills）
     if [ "${CLEAN_INSTALL:-}" = "yes" ]; then
         docker volume rm "$(basename "$(pwd)")_openclaw-data" 2>/dev/null || true
-        print_info "已清空旧数据卷（--clean 模式）"
+        print_info "已清空核心数据卷（openclaw-data）"
+        
+        # 特别询问是否清空浏览器 profiles
+        echo ""
+        print_warn "⚠️ 发现浏览器持久化数据卷 (browser_profile)"
+        print_warn "该数据卷保存了你所有网页（如 Twitter/Discord）的登录会话。"
+        if confirm "  是否一并彻底销毁网页登录态？(选 N 可保留账户登录状态)"; then
+            docker volume rm "$(basename "$(pwd)")_browser_profile" 2>/dev/null || true
+            print_info "已清空浏览器会话状态"
+        else
+            print_success "已保留浏览器会话状态，重装后无需重新登录网页。"
+        fi
+        echo ""
     fi
 
     # 写入临时文件，后续 docker cp 注入容器
@@ -726,12 +745,13 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- **容器内已安装 Chromium 浏览器**，你可以直接使用内置 browser 工具
-- 支持：打开网页、截图、点击、输入、执行 JavaScript、读取页面内容
-- 浏览器以 headless 模式运行，没有用户的登录态"
+        chrome_section="- **你有完整的浏览器控制权**：一个独立的 Sidecar 浏览器容器运行在 \`ws://openclaw-browser:9222\`
+- 务必使用 Playwright 连接 CDP：\`playwright.chromium.connect_over_cdp(\"ws://openclaw-browser:9222\")\`
+- 请注意：网页上下文（Cookies/Session）已通过 Volume 永久保存，当你接管 context 时，它已经带有用户的登录态。
+- 长时间运行复杂网页可能导致内存爆炸。如果遇到 Timeout 或 CDP 断开，请先尝试刷新页面或重启页面流程。"
     else
-        chrome_section="- 容器内未安装浏览器，你只能通过 fetch/curl 获取网页内容（无 JS 渲染）
-- 如需浏览器功能，请让用户运行 ./setup.sh 并启用浏览器"
+        chrome_section="- 容器内未安装浏览器且未挂载 Sidecar，你只能通过 fetch/curl 获取网页内容（无 JS 渲染）
+- 如需浏览器功能，请让用户运行 ./setup.sh 并启用独立浏览器"
     fi
 
     cat > "$tmpdir/SOUL.md" << SOULEOF
@@ -868,17 +888,6 @@ SOULEOF
     done
     print_success "文件读写（内置 File System）"
 
-    # 如果启用了浏览器，安装 Chromium
-    if [ "$SHARE_CHROME" = "yes" ]; then
-        echo -en "    ${DIM}安装 Chromium 浏览器（约 200-400MB）..."
-        if docker exec -u root openclaw-main sh -c 'apt-get update -qq && apt-get install -y -qq chromium > /dev/null 2>&1' 2>/dev/null; then
-            echo -e " 完成${NC}"
-            print_success "Chromium 浏览器已安装（browser 工具可直接使用）"
-        else
-            echo -e " ${NC}"
-            print_warn "Chromium 安装失败（可手动：docker exec -u root openclaw-main apt-get install -y chromium）"
-        fi
-    fi
 
     # Step 5: 微信
     echo ""
@@ -940,8 +949,10 @@ SOULEOF
 
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo ""
-        echo -e "  ${YELLOW}${BOLD}🌐 浏览器${NC}:"
-        echo -e "    ${DIM}# Chromium 已安装在容器内，AI 可直接使用 browser 工具${NC}"
+        echo -e "  ${YELLOW}${BOLD}🌐 独立浏览器架构 (Sidecar)${NC}:"
+        echo -e "    ${DIM}# openclaw-browser 容器已启动并在 9222 端口暴露 CDP。${NC}"
+        echo -e "    ${DIM}# 浏览器登录态已持久化保存，任何重装都不会丢失账号登录！${NC}"
+        echo -e "    ${DIM}# 在本机浏览器访问 http://127.0.0.1:9222 可实时围观 AI 视角的网页操作（Debug 神器）。${NC}"
     fi
 
     echo ""
