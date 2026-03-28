@@ -584,17 +584,19 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- **用户已开启浏览器远程控制**：你可以通过 Chrome DevTools Protocol (CDP) 操控用户的浏览器
-- CDP 连接地址：http://host.docker.internal:9222
-- 你可以用 playwright 或 puppeteer 通过 CDP 连接，像人一样操作浏览器
+        chrome_section="- **用户已开启浏览器远程控制**
+- 宿主机运行了 Chrome Bridge 服务，你可以按需启动/关闭 Chrome
+- 启动 Chrome：curl http://host.docker.internal:9223/start
+- 关闭 Chrome：curl http://host.docker.internal:9223/stop
+- 查看状态：curl http://host.docker.internal:9223/status
+- Chrome 启动后，通过 CDP 连接：http://host.docker.internal:9222
+- Playwright 连接方式：playwright.chromium.connectOverCDP('http://host.docker.internal:9222')
 - 支持：点击、输入、截图、导航、执行 JavaScript、读取页面内容
-- 所有操作自动继承用户的登录状态（Cookie / Session）
-- 连接方式（Node.js）：const browser = await playwright.chromium.connectOverCDP('http://host.docker.internal:9222')
-- 注意：用户需要先在宿主机运行 ./start-chrome-debug.sh 才能连接"
+- 注意：Chrome 使用独立 profile，没有用户的登录态。需要登录时请让用户手动登录"
     else
         chrome_section="- 你没有可用的浏览器，只能通过 fetch/curl 获取网页内容（无 JS 渲染）
 - 用户未开启浏览器远程控制
-- 如需浏览器操作（如 JS 渲染、自动点击），请让用户运行 ./start-chrome-debug.sh 并启用 Chrome CDP"
+- 如需浏览器操作，请让用户运行 ./setup.sh 并启用 Chrome CDP"
     fi
 
     cat > "$tmpdir/SOUL.md" << SOULEOF
@@ -772,34 +774,28 @@ SOULEOF
     sleep 5
     print_success "容器已重启"
 
-    # 如果启用了 CDP，自动启动 Chrome 调试模式
+    # 如果启用了 CDP，启动 Chrome Bridge 服务
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo ""
-        echo -e "  ${BOLD}🌐 启动 Chrome 远程调试模式...${NC}"
+        echo -e "  ${BOLD}🌐 启动 Chrome Bridge 服务...${NC}"
 
-        local chrome_bin=""
-        if [ "$(uname)" = "Darwin" ]; then
-            chrome_bin="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        elif command -v google-chrome &>/dev/null; then
-            chrome_bin="google-chrome"
-        elif command -v chromium-browser &>/dev/null; then
-            chrome_bin="chromium-browser"
-        elif command -v chromium &>/dev/null; then
-            chrome_bin="chromium"
-        fi
+        if [ -f "./chrome-bridge.sh" ]; then
+            # 关闭已有的 bridge 进程
+            pkill -f "chrome-bridge.sh" 2>/dev/null || true
+            sleep 1
 
-        if [ -n "$chrome_bin" ] && ([ -f "$chrome_bin" ] || command -v "$chrome_bin" &>/dev/null); then
-            # 先关闭已有的 Chrome 实例（否则调试端口无法绑定）
-            if pgrep -f "Google Chrome" >/dev/null 2>&1 || pgrep -f "chrome" >/dev/null 2>&1; then
-                print_info "检测到已运行的 Chrome，正在关闭并重启..."
-                pkill -f "Google Chrome" 2>/dev/null || pkill -f "chrome" 2>/dev/null || true
-                sleep 2
-            fi
-            "$chrome_bin" --remote-debugging-port=9222 --remote-allow-origins="*" --no-first-run --no-default-browser-check >/dev/null 2>&1 &
+            # 后台启动 bridge
+            chmod +x ./chrome-bridge.sh
+            nohup ./chrome-bridge.sh > /tmp/chrome-bridge.log 2>&1 &
+            sleep 2
 
-            # 等待调试端口就绪（macOS 上 Chrome 启动较慢）
+            # 通过 bridge 启动 Chrome
+            echo -en "    ${DIM}启动 Chrome 调试实例"
+            local bridge_result
+            bridge_result=$(curl -s "http://localhost:9223/start" 2>/dev/null || echo '{"ok":false}')
+
+            # 等待 CDP 就绪
             local cdp_ready=false
-            echo -en "    ${DIM}等待调试端口就绪"
             for i in 1 2 3 4 5 6 7 8 9 10; do
                 sleep 1
                 echo -en "."
@@ -811,16 +807,14 @@ SOULEOF
             echo -e "${NC}"
 
             if [ "$cdp_ready" = "true" ]; then
-                print_success "Chrome 调试模式已启动（端口 9222）"
-                print_info "AI 现在可以通过 CDP 控制你的浏览器"
-                print_info "关闭 Chrome 即可断开 AI 的浏览器控制"
+                print_success "Chrome Bridge 已启动（桥接端口 9223，CDP 端口 9222）"
+                print_info "AI 可通过 curl host.docker.internal:9223/start 按需启动 Chrome"
+                print_info "你的日常 Chrome 不受影响（使用独立 profile）"
             else
-                print_warn "Chrome 启动失败"
-                print_info "请手动运行：./start-chrome-debug.sh"
+                print_warn "Chrome 启动失败，查看日志：cat /tmp/chrome-bridge.log"
             fi
         else
-            print_warn "未找到 Chrome，请先安装 Google Chrome"
-            print_info "安装后运行：./start-chrome-debug.sh"
+            print_warn "未找到 chrome-bridge.sh"
         fi
     fi
 
@@ -847,8 +841,9 @@ SOULEOF
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo ""
         echo -e "  ${YELLOW}${BOLD}🌐 浏览器控制${NC}:"
-        echo -e "    ${DIM}# Chrome 调试模式已在后台运行${NC}"
-        echo -e "    ${DIM}# 重启电脑后需要重新运行：./start-chrome-debug.sh${NC}"
+        echo -e "    ${DIM}# Chrome Bridge 已在后台运行（端口 9223）${NC}"
+        echo -e "    ${DIM}# AI 会自动按需启动/关闭 Chrome（独立 profile，不影响日常浏览器）${NC}"
+        echo -e "    ${DIM}# 重启电脑后需要重新运行：./chrome-bridge.sh &${NC}"
     fi
 
     echo ""
