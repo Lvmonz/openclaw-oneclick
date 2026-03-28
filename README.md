@@ -4,13 +4,14 @@
 
 ## ✨ 一键搞定
 
-- Docker 沙盒环境（类 conda 隔离）
+- Docker 沙盒环境（类 conda 隔离，每个容器独立工作目录）
 - New-api + Anthropic Claude 模型配置
 - 双模型路由 + Prompt 缓存优化
-- Soul / User / Agents MD 模板初始化
+- 高执行力助理提示词模板（Soul / User / Agents）
 - 5 个核心 Skills 自动安装
 - 个人微信（官方 ClawBot 插件扫码接入）
-- 网关自动重启
+- 本地 Chrome Cookies 共享（可选，让 AI 访问已登录网站）
+- 每次安装自动清空旧数据（干净重装）
 
 ## 📦 文件说明
 
@@ -18,11 +19,11 @@
 openclaw-oneclick/
 ├── setup.sh              # 主安装脚本（自动 7 步）
 ├── .env.example          # 环境变量模板
-├── docker-compose.yml    # Docker 编排配置
+├── docker-compose.yml    # Docker 编排（命名卷 + Chrome 挂载）
 ├── .gitignore            # 防止 .env 和数据泄露
 └── templates/            # MD 文件模板
-    ├── SOUL.md           # AI 人格定义
-    ├── AGENTS.md         # 权限控制
+    ├── SOUL.md           # AI 人格定义（执行力优先）
+    ├── AGENTS.md         # 权限控制（自动执行大部分操作）
     └── MEMORY.md         # 记忆初始化
 ```
 
@@ -40,24 +41,26 @@ openclaw-oneclick/
 git clone https://github.com/Lvmonz/openclaw-oneclick.git
 cd openclaw-oneclick
 
-# 2. 运行交互式安装向导（会引导你填写所有配置）
+# 2. 运行交互式安装向导
 chmod +x setup.sh
 ./setup.sh
 ```
 
 > 💡 无需手动编辑 `.env`——脚本会一步步引导你填写 API Key、选择模型、配置微信等。
 
+> 💡 **重装说明**：每次运行 `./setup.sh` 会自动清空旧的容器数据（配置/缓存/对话记录），`.env` 中的 API Key 等参数不受影响。
+
 ### 预期输出
 
 ```
 🦞 OpenClaw 一键安装向导
 ========================
-✔ Step 1: 创建目录结构...
+✔ Step 1: 清空旧数据并准备配置文件...
 ✔ Step 2: 拉取镜像并启动容器...
-✔ Step 3: 生成模型配置...
-✔ Step 4: 复制 MD 模板...
-✔ Step 5: 安装核心 Skills...
-✔ Step 6: 配置微信插件...
+✔ Step 3: 注入配置文件...
+✔ Step 4: 安装核心 Skills...
+✔ Step 5: 配置微信插件...
+✔ Step 6: 清理临时文件...
 ✔ Step 7: 重启容器...
 
 ✅ 安装完成！
@@ -75,9 +78,29 @@ CLI 对话:  docker exec -it openclaw-main openclaw agent -m "你的问题"
 | 1 | 模型供应商 | New-api Base URL + API Key（必填，自动校验格式）|
 | 2 | 模型选择 | 3 种预置组合可选，也支持自定义 |
 | 3 | 微信接入 | 官方 ClawBot 插件，安装后扫码授权（可选）|
-| 3 | 联网搜索 | Brave Search API，免费 2000 次/月（可选，不装仍可通过 web-browser 访问网页）|
+| 3 | Chrome 共享 | 挂载本地 Chrome Cookies，让 AI 访问已登录网站（可选，只读）|
+| 3 | 联网搜索 | Brave Search API，免费 2000 次/月（可选）|
 | 4 | 用户信息 | 名字、语言、时区（用于生成 User.md）|
-| 5 | 确认总览 | 可跳回任意步骤修改，Ctrl+C 随时退出（配置自动保存）|
+| 5 | 确认总览 | 可跳回任意步骤修改，Ctrl+C 随时退出 |
+
+## 🏗️ 架构说明
+
+```
+宿主机                          Docker 容器
+─────────                       ──────────
+.env (API Keys)    ──docker cp──> /home/node/.openclaw/openclaw.json
+templates/*.md     ──docker cp──> /home/node/.openclaw/workspace/*.md
+Chrome 用户数据    ──volume:ro──> /home/node/.chrome-host/
+                                  
+Docker Volume: openclaw-data ──> /home/node/.openclaw/
+                                  ├── workspace/  (AI 独立工作目录)
+                                  ├── skills/     (技能包)
+                                  └── extensions/ (插件)
+```
+
+- **配置注入**：`setup.sh` 写临时文件 → 启动容器 → `docker cp` 注入 → 重启生效
+- **数据隔离**：每个容器有独立的 Docker 命名卷，互不干扰
+- **清空重装**：`./setup.sh` 自动删除旧卷，从零开始
 
 ## 📋 日常操作
 
@@ -98,21 +121,6 @@ docker exec -it openclaw-main bash
 docker logs openclaw-main --tail 50
 ```
 
-## 💾 备份与恢复
-
-```bash
-# 备份
-cd ~/openclaw-oneclick
-docker compose down
-tar -czf ~/openclaw-backup-$(date +%Y%m%d).tar.gz .
-
-# 恢复到新机器
-tar -xzf openclaw-backup-*.tar.gz -C ~/openclaw-oneclick/
-cd ~/openclaw-oneclick && docker compose up -d
-```
-
-> ⚠️ 备份包含 API Key，传输时建议加密：`tar -czf - . | gpg -c > backup.tar.gz.gpg`
-
 ## 🗑️ 彻底卸载
 
 ```bash
@@ -131,11 +139,11 @@ A: 微信扫码授权后直接微信聊天，或者用 CLI：`docker exec -it op
 **Q: `/status` 显示 Provider 为空**
 A: 检查 `.env` 中 `NEWAPI_BASE_URL` 末尾是否有 `/v1`。
 
-**Q: 模型调用返回 400 错误**
-A: 确认 config/openclaw.json 中 `api` 是 `"anthropic-messages"`。
+**Q: 重装后数据还在？**
+A: 不会。每次 `./setup.sh` 会自动销毁旧的 Docker 命名卷，完全从零开始。`.env` 中的配置参数不受影响。
 
-**Q: 想让 AI 访问本地文件**
-A: 在 `docker-compose.yml` 的 `volumes` 中添加 `- ~/Documents:/home/node/documents:ro`。
+**Q: Chrome Cookies 共享安全吗？**
+A: 以只读模式挂载，AI 无法修改。但 AI 可以读取你所有网站的登录凭证，请知悉风险后启用。
 
 ## 📖 完整教程
 
