@@ -210,31 +210,31 @@ step1() {
         2)
             PROVIDER_NAME="openai"
             NEWAPI_BASE_URL="https://api.openai.com/v1"
-            API_FORMAT="openai-completions"
+            API_FORMAT="openai-responses"
             print_success "已选择 OpenAI（GPT 官方）"
             ;;
         3)
             PROVIDER_NAME="deepseek"
             NEWAPI_BASE_URL="https://api.deepseek.com/v1"
-            API_FORMAT="openai-completions"
+            API_FORMAT="openai-responses"
             print_success "已选择 DeepSeek"
             ;;
         4)
             PROVIDER_NAME="siliconflow"
             NEWAPI_BASE_URL="https://api.siliconflow.cn/v1"
-            API_FORMAT="openai-completions"
+            API_FORMAT="openai-responses"
             print_success "已选择 SiliconFlow（硅基流动）"
             ;;
         5)
             PROVIDER_NAME="openrouter"
             NEWAPI_BASE_URL="https://openrouter.ai/api/v1"
-            API_FORMAT="openai-completions"
+            API_FORMAT="openai-responses"
             print_success "已选择 OpenRouter"
             ;;
         6)
             PROVIDER_NAME="kimi"
             NEWAPI_BASE_URL="https://api.moonshot.cn/v1"
-            API_FORMAT="openai-completions"
+            API_FORMAT="openai-responses"
             print_success "已选择 Kimi（月之暗面）"
             ;;
         7)
@@ -264,7 +264,7 @@ step1() {
             if [ "$fmt_choice" = "2" ]; then
                 API_FORMAT="anthropic-messages"
             else
-                API_FORMAT="openai-completions"
+                API_FORMAT="openai-responses"
             fi
             print_success "自定义供应商: $NEWAPI_BASE_URL ($API_FORMAT)"
             ;;
