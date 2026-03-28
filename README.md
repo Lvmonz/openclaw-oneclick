@@ -102,6 +102,18 @@ Docker Volume: openclaw-data ──> /home/node/.openclaw/
 - **数据隔离**：每个容器有独立的 Docker 命名卷，互不干扰
 - **清空重装**：`./setup.sh` 自动删除旧卷，从零开始
 
+## 🔄 更新脚本
+
+```bash
+cd ~/openclaw-oneclick
+
+# 拉取最新脚本
+git pull
+
+# 重新安装（自动清空旧数据）
+./setup.sh
+```
+
 ## 📋 日常操作
 
 ```bash
