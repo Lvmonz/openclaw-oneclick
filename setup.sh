@@ -313,18 +313,21 @@ step3() {
 
     echo ""
 
-    # Chrome Cookies 共享
-    echo -e "  ${BOLD}🌐 共享本地 Chrome 浏览器（Cookies + 登录状态）${NC}"
-    print_info "让 AI 使用你本地 Chrome 的 Cookies，无需重新登录即可访问你已登录的网站。"
-    print_warn "⚠️ 安全提示：AI 可以读取你所有网站的登录凭证（银行、邮箱等），以只读方式挂载。"
+    # Chrome 远程控制（CDP）
+    echo -e "  ${BOLD}🌐 浏览器远程控制（Chrome CDP）${NC}"
+    print_info "让 AI 通过 Chrome DevTools Protocol 直接操控你的浏览器。"
+    print_info "AI 可以像人一样点击、输入、截图，自动继承所有登录状态。"
+    echo ""
+    echo -e "  ${DIM}使用前需运行：./start-chrome-debug.sh 启动 Chrome 调试模式${NC}"
+    print_warn "⚠️ AI 能看到和操作你浏览器中的所有内容（包括已登录的网站）"
     echo ""
 
-    if confirm "  是否共享本地 Chrome Cookies？"; then
+    if confirm "  是否启用浏览器远程控制？"; then
         SHARE_CHROME="yes"
-        print_success "将挂载 Chrome 用户数据（只读模式）"
+        print_success "将配置 CDP 连接（记得先运行 ./start-chrome-debug.sh）"
     else
         SHARE_CHROME="no"
-        print_info "已跳过 Chrome 共享"
+        print_info "已跳过浏览器控制"
     fi
 
     echo ""
@@ -480,22 +483,11 @@ USER_NAME=$USER_NAME
 USER_LANG=$USER_LANG
 EOF
 
-    # 根据 SHARE_CHROME 设置 Chrome 路径
+    # 根据 SHARE_CHROME 设置 CDP 连接地址
     if [ "$SHARE_CHROME" = "yes" ]; then
-        local chrome_path=""
-        if [ "$(uname)" = "Darwin" ]; then
-            chrome_path="$HOME/Library/Application Support/Google/Chrome"
-        else
-            chrome_path="$HOME/.config/google-chrome"
-        fi
-        if [ -d "$chrome_path" ]; then
-            echo "CHROME_USER_DATA=$chrome_path" >> .env
-        else
-            echo "CHROME_USER_DATA=/dev/null" >> .env
-            print_warn "未找到 Chrome 目录：$chrome_path"
-        fi
+        echo "CHROME_CDP_URL=http://host.docker.internal:9222" >> .env
     else
-        echo "CHROME_USER_DATA=/dev/null" >> .env
+        echo "CHROME_CDP_URL=" >> .env
     fi
 }
 
@@ -587,15 +579,17 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- 你没有内置的图形浏览器，但可以通过 fetch/curl 发起 HTTP 请求来获取网页内容
-- **用户已授权共享本地 Chrome Cookies**：宿主机的 Chrome 用户数据已挂载到 /home/node/.chrome-host/（只读）
-- 你可以读取 /home/node/.chrome-host/Default/Cookies 中的数据，配合 HTTP 请求访问用户已登录的网站
-- 注意：这些是用户的真实登录凭证，使用时要谨慎，不要泄露
-- 如需完整的浏览器功能（如 JavaScript 渲染），可让用户安装 puppeteer"
+        chrome_section="- **用户已开启浏览器远程控制**：你可以通过 Chrome DevTools Protocol (CDP) 操控用户的浏览器
+- CDP 连接地址：http://host.docker.internal:9222
+- 你可以用 playwright 或 puppeteer 通过 CDP 连接，像人一样操作浏览器
+- 支持：点击、输入、截图、导航、执行 JavaScript、读取页面内容
+- 所有操作自动继承用户的登录状态（Cookie / Session）
+- 连接方式（Node.js）：const browser = await playwright.chromium.connectOverCDP('http://host.docker.internal:9222')
+- 注意：用户需要先在宿主机运行 ./start-chrome-debug.sh 才能连接"
     else
-        chrome_section="- 你没有内置的图形浏览器，但可以通过 fetch/curl 发起 HTTP 请求来获取网页内容
-- 用户未开启 Chrome Cookies 共享，你只能以未登录状态获取网页内容
-- 如需访问需要登录的网站，请让用户提供账号信息或开启 Chrome 共享"
+        chrome_section="- 你没有可用的浏览器，只能通过 fetch/curl 获取网页内容（无 JS 渲染）
+- 用户未开启浏览器远程控制
+- 如需浏览器操作（如 JS 渲染、自动点击），请让用户运行 ./start-chrome-debug.sh 并启用 Chrome CDP"
     fi
 
     cat > "$tmpdir/SOUL.md" << SOULEOF
@@ -721,8 +715,16 @@ SOULEOF
             print_success "$skill_desc ($skill_name)" || \
             print_warn "$skill_desc ($skill_name) 安装跳过"
     done
-    print_success "网页浏览（内置 Headless Browser）"
     print_success "文件读写（内置 File System）"
+
+    # 如果启用了 Chrome CDP，安装 playwright
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo -en "    ${DIM}安装 Playwright（浏览器控制）..."
+        docker exec openclaw-main npm install -g playwright 2>/dev/null && \
+            echo -e " 完成${NC}" && \
+            print_success "Playwright 已安装（CDP 浏览器控制）" || \
+            (echo -e " ${NC}" && print_warn "Playwright 安装失败（可稍后手动安装：npm install -g playwright）")
+    fi
 
     # Step 5: 微信
     echo ""

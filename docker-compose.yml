@@ -8,12 +8,14 @@ services:
       - "18789:18789"
     volumes:
       - openclaw-data:/home/node/.openclaw
-      - ${CHROME_USER_DATA:-/dev/null}:/home/node/.chrome-host:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+      - CHROME_CDP_URL=${CHROME_CDP_URL:-}
 
 volumes:
   openclaw-data:

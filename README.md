@@ -10,7 +10,7 @@
 - 高执行力助理提示词模板（Soul / User / Agents）
 - 5 个核心 Skills 自动安装
 - 个人微信（官方 ClawBot 插件扫码接入）
-- 本地 Chrome Cookies 共享（可选，让 AI 访问已登录网站）
+- Chrome 浏览器远程控制（CDP 协议，像人一样操作浏览器）
 - 每次安装自动清空旧数据（干净重装）
 
 ## 📦 文件说明
@@ -18,11 +18,12 @@
 ```
 openclaw-oneclick/
 ├── setup.sh              # 主安装脚本（自动 7 步）
+├── start-chrome-debug.sh # Chrome 远程调试启动脚本
 ├── .env.example          # 环境变量模板
-├── docker-compose.yml    # Docker 编排（命名卷 + Chrome 挂载）
+├── docker-compose.yml    # Docker 编排（命名卷 + CDP）
 ├── .gitignore            # 防止 .env 和数据泄露
 └── templates/            # MD 文件模板
-    ├── SOUL.md           # AI 人格定义（执行力优先）
+    ├── SOUL.md           # AI 人格定义（执行力优先 + 环境感知）
     ├── AGENTS.md         # 权限控制（自动执行大部分操作）
     └── MEMORY.md         # 记忆初始化
 ```
@@ -78,7 +79,7 @@ CLI 对话:  docker exec -it openclaw-main openclaw agent -m "你的问题"
 | 1 | 模型供应商 | New-api Base URL + API Key（必填，自动校验格式）|
 | 2 | 模型选择 | 3 种预置组合可选，也支持自定义 |
 | 3 | 微信接入 | 官方 ClawBot 插件，安装后扫码授权（可选）|
-| 3 | Chrome 共享 | 挂载本地 Chrome Cookies，让 AI 访问已登录网站（可选，只读）|
+| 3 | Chrome CDP | 浏览器远程控制，先运行 `./start-chrome-debug.sh`（可选）|
 | 3 | 联网搜索 | Brave Search API，免费 2000 次/月（可选）|
 | 4 | 用户信息 | 名字、语言、时区（用于生成 User.md）|
 | 5 | 确认总览 | 可跳回任意步骤修改，Ctrl+C 随时退出 |
@@ -90,9 +91,11 @@ CLI 对话:  docker exec -it openclaw-main openclaw agent -m "你的问题"
 ─────────                       ──────────
 .env (API Keys)    ──docker cp──> /home/node/.openclaw/openclaw.json
 templates/*.md     ──docker cp──> /home/node/.openclaw/workspace/*.md
-Chrome 用户数据    ──volume:ro──> /home/node/.chrome-host/
+
+Chrome (:9222)     ─── CDP ───> host.docker.internal:9222
+  ↑ 宿主机浏览器            ↑ 容器内 Playwright 连接
                                   
-Docker Volume: openclaw-data ──> /home/node/.openclaw/
+ Docker Volume: openclaw-data ──> /home/node/.openclaw/
                                   ├── workspace/  (AI 独立工作目录)
                                   ├── skills/     (技能包)
                                   └── extensions/ (插件)
@@ -156,7 +159,10 @@ A: 检查 `.env` 中 `NEWAPI_BASE_URL` 末尾是否有 `/v1`。
 A: 不会。每次 `./setup.sh` 会自动销毁旧的 Docker 命名卷，完全从零开始。`.env` 中的配置参数不受影响。
 
 **Q: Chrome Cookies 共享安全吗？**
-A: 以只读模式挂载，AI 无法修改。但 AI 可以读取你所有网站的登录凭证，请知悉风险后启用。
+A: 改用 CDP 方案后，AI 通过网络连接你的浏览器，可以看到和操作你所有已登录的网站。关闭 `start-chrome-debug.sh` 即断开连接。
+
+**Q: 如何让 AI 操控浏览器？**
+A: 先运行 `./start-chrome-debug.sh`，然后在对话中告诉 AI 你要访问什么网站即可。
 
 ## 📖 完整教程
 
