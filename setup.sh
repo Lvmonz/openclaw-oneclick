@@ -188,13 +188,10 @@ step1() {
 
     echo -e "  ${BOLD}选择你的 API 供应商：${NC}"
     echo ""
-    echo -e "  ${GREEN}1)${NC} Anthropic（Claude 官方）       ${DIM}api.anthropic.com${NC}"
-    echo -e "  ${GREEN}2)${NC} OpenAI（GPT 官方）             ${DIM}api.openai.com${NC}"
-    echo -e "  ${GREEN}3)${NC} DeepSeek（深度求索官方）        ${DIM}api.deepseek.com${NC}"
-    echo -e "  ${GREEN}4)${NC} SiliconFlow（硅基流动）         ${DIM}api.siliconflow.cn${NC}"
-    echo -e "  ${GREEN}5)${NC} OpenRouter（多模型聚合）        ${DIM}openrouter.ai${NC}"
-    echo -e "  ${GREEN}6)${NC} Kimi（月之暗面官方）            ${DIM}api.moonshot.cn${NC}"
-    echo -e "  ${GREEN}7)${NC} 自定义（New-api / 自建代理）"
+    echo -e "  ${GREEN}1)${NC} Anthropic（Claude 官方推荐）"
+    echo -e "  ${GREEN}2)${NC} OpenAI（GPT 官方）"
+    echo -e "  ${GREEN}3)${NC} OpenRouter（多模型聚合推荐）"
+    echo -e "  ${GREEN}4)${NC} 自定义（New-api / 自建 OpenAI 兼容代理）"
     echo ""
     echo -en "  选择 ${DIM}[1]${NC}: "
     read -r provider_choice
@@ -203,41 +200,23 @@ step1() {
     case $provider_choice in
         1)
             PROVIDER_NAME="anthropic"
-            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
-            API_FORMAT="anthropic-messages"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
             print_success "已选择 Anthropic（Claude 官方）"
             ;;
         2)
             PROVIDER_NAME="openai"
-            NEWAPI_BASE_URL="https://api.openai.com/v1"
-            API_FORMAT="openai-completions"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
             print_success "已选择 OpenAI（GPT 官方）"
             ;;
         3)
-            PROVIDER_NAME="deepseek"
-            NEWAPI_BASE_URL="https://api.deepseek.com/v1"
-            API_FORMAT="openai-completions"
-            print_success "已选择 DeepSeek"
-            ;;
-        4)
-            PROVIDER_NAME="siliconflow"
-            NEWAPI_BASE_URL="https://api.siliconflow.cn/v1"
-            API_FORMAT="openai-completions"
-            print_success "已选择 SiliconFlow（硅基流动）"
-            ;;
-        5)
             PROVIDER_NAME="openrouter"
-            NEWAPI_BASE_URL="https://openrouter.ai/api/v1"
-            API_FORMAT="openai-completions"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
             print_success "已选择 OpenRouter"
             ;;
-        6)
-            PROVIDER_NAME="kimi"
-            NEWAPI_BASE_URL="https://api.moonshot.cn/v1"
-            API_FORMAT="openai-completions"
-            print_success "已选择 Kimi（月之暗面）"
-            ;;
-        7)
+        4)
             PROVIDER_NAME="custom"
             echo ""
             while true; do
@@ -256,8 +235,8 @@ step1() {
 
             echo ""
             echo -e "  ${BOLD}API 协议格式：${NC}"
-            echo -e "  ${GREEN}1)${NC} OpenAI 兼容 ${DIM}（大多数国产模型、代理）${NC}"
-            echo -e "  ${GREEN}2)${NC} Anthropic Messages ${DIM}（Claude 系列、New-api 代理）${NC}"
+            echo -e "  ${GREEN}1)${NC} OpenAI 兼容 ${DIM}（大多数代理）${NC}"
+            echo -e "  ${GREEN}2)${NC} Anthropic Messages ${DIM}（Claude 系列代理）${NC}"
             echo -en "  选择 ${DIM}[1]${NC}: "
             read -r fmt_choice
             fmt_choice=${fmt_choice:-1}
@@ -270,8 +249,8 @@ step1() {
             ;;
         *)
             PROVIDER_NAME="anthropic"
-            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
-            API_FORMAT="anthropic-messages"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
             print_success "已选择 Anthropic（Claude 官方）"
             ;;
     esac
@@ -683,15 +662,21 @@ do_install() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
+    # 根据是否是内置 Provider 动态拼接 API 参数
+    local provider_props="\"apiKey\": \"${NEWAPI_API_KEY}\","
+    if [ -n "$API_FORMAT" ] && [ -n "$NEWAPI_BASE_URL" ]; then
+        provider_props="\"baseUrl\": \"${NEWAPI_BASE_URL}\",
+        \"apiKey\": \"${NEWAPI_API_KEY}\",
+        \"api\": \"${API_FORMAT}\","
+    fi
+
     # openclaw.json
     cat > "$tmpdir/openclaw.json" << JSONEOF
 {
   "models": {
     "providers": {
       "${PROVIDER_NAME}": {
-        "baseUrl": "${NEWAPI_BASE_URL}",
-        "apiKey": "${NEWAPI_API_KEY}",
-        "api": "${API_FORMAT}",
+        ${provider_props}
         "models": [
           {
             "id": "${PRIMARY_MODEL}",
