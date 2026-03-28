@@ -796,8 +796,21 @@ SOULEOF
                 sleep 2
             fi
             "$chrome_bin" --remote-debugging-port=9222 --remote-allow-origins="*" --no-first-run --no-default-browser-check >/dev/null 2>&1 &
-            sleep 3
-            if curl -s "http://localhost:9222/json/version" > /dev/null 2>&1; then
+
+            # 等待调试端口就绪（macOS 上 Chrome 启动较慢）
+            local cdp_ready=false
+            echo -en "    ${DIM}等待调试端口就绪"
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                sleep 1
+                echo -en "."
+                if curl -s "http://localhost:9222/json/version" > /dev/null 2>&1; then
+                    cdp_ready=true
+                    break
+                fi
+            done
+            echo -e "${NC}"
+
+            if [ "$cdp_ready" = "true" ]; then
                 print_success "Chrome 调试模式已启动（端口 9222）"
                 print_info "AI 现在可以通过 CDP 控制你的浏览器"
                 print_info "关闭 Chrome 即可断开 AI 的浏览器控制"
