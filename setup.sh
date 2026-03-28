@@ -480,19 +480,19 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
-    # Step 1: 目录 + 配置文件（全部写到宿主机，容器启动时自动挂载）
+    # Step 1: 准备配置文件（写到临时目录，稍后注入容器）
     echo ""
-    echo -e "  ${BLUE}[1/7]${NC} 创建目录与配置文件..."
-    mkdir -p config workspace skills extensions
+    echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
 
-    # 停止旧容器（避免 file watcher 冲突）
+    # 停止旧容器
     docker compose down 2>/dev/null || true
 
-    # 清理旧的备份文件
-    rm -f config/*.clobbered.* config/*.bak* 2>/dev/null
+    # 写入临时文件，后续 docker cp 注入容器
+    local tmpdir
+    tmpdir=$(mktemp -d)
 
-    # 写入 openclaw.json（容器未运行，无 file watcher 冲突）
-    cat > config/openclaw.json << JSONEOF
+    # openclaw.json
+    cat > "$tmpdir/openclaw.json" << JSONEOF
 {
   "models": {
     "providers": {
@@ -522,8 +522,8 @@ do_install() {
 }
 JSONEOF
 
-    # 写入 USER.md
-    cat > workspace/USER.md << USEREOF
+    # USER.md
+    cat > "$tmpdir/USER.md" << USEREOF
 # User
 
 ## 基本信息
@@ -536,13 +536,13 @@ JSONEOF
 - 需要时提供完整命令
 USEREOF
 
-    # 复制 MD 模板
+    # 复制 MD 模板到临时目录
     if ls templates/*.md 1>/dev/null 2>&1; then
         for f in templates/*.md; do
-            cp "$f" workspace/"$(basename "$f")" 2>/dev/null
+            cp "$f" "$tmpdir/$(basename "$f")" 2>/dev/null
         done
     fi
-    print_success "config/ workspace/ skills/ 已创建，配置文件已写入"
+    print_success "配置文件已准备"
 
     # Step 2: Docker 镜像
     echo ""
@@ -580,7 +580,7 @@ USEREOF
     fi
     print_success "容器 openclaw-main 已启动"
 
-    # 等待
+    # 等待容器就绪
     echo ""
     echo -en "  ${DIM}等待容器就绪"
     for i in 1 2 3 4 5; do
@@ -588,6 +588,22 @@ USEREOF
         echo -en "."
     done
     echo -e "${NC}"
+
+    # 注入配置文件到容器内
+    echo -en "  ${DIM}注入配置文件..."
+    docker cp "$tmpdir/openclaw.json" openclaw-main:/home/node/.openclaw/openclaw.json 2>/dev/null
+    docker exec openclaw-main mkdir -p /home/node/.openclaw/workspace 2>/dev/null
+    for f in "$tmpdir"/*.md; do
+        [ -f "$f" ] && docker cp "$f" openclaw-main:/home/node/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
+    done
+    echo -e " 完成${NC}"
+
+    # 清理临时目录
+    rm -rf "$tmpdir"
+
+    # 重启让配置生效
+    docker restart openclaw-main >/dev/null 2>&1
+    sleep 3
 
     # Step 4: Skills
     echo ""
@@ -618,10 +634,10 @@ USEREOF
         print_info "微信未配置，已跳过"
     fi
 
-    # Step 6: 清理 + 最终重启
+    # Step 6: 清理
     echo ""
     echo -e "  ${BLUE}[6/7]${NC} 清理临时文件..."
-    rm -f config/*.clobbered.* config/*.bak* 2>/dev/null
+    docker exec openclaw-main sh -c 'rm -f ~/.openclaw/*.clobbered.* ~/.openclaw/*.bak* 2>/dev/null' || true
     print_success "已清理"
 
     # Step 7: 重启容器（确保新配置和插件生效）

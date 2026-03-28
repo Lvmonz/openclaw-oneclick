@@ -7,12 +7,12 @@ services:
     ports:
       - "18789:18789"
     volumes:
-      - ./config:/home/node/.openclaw
-      - ./workspace:/home/node/.openclaw/workspace
-      - ./skills:/home/node/.openclaw/skills
-      - ./extensions:/home/node/.openclaw/extensions
+      - openclaw-data:/home/node/.openclaw
     env_file:
       - .env
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+
+volumes:
+  openclaw-data:
