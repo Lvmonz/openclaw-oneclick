@@ -200,20 +200,20 @@ step1() {
     case $provider_choice in
         1)
             PROVIDER_NAME="anthropic"
-            NEWAPI_BASE_URL=""
-            API_FORMAT=""
+            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
+            API_FORMAT="anthropic-messages"
             print_success "已选择 Anthropic（Claude 官方）"
             ;;
         2)
             PROVIDER_NAME="openai"
-            NEWAPI_BASE_URL=""
-            API_FORMAT=""
+            NEWAPI_BASE_URL="https://api.openai.com/v1"
+            API_FORMAT="openai-completions"
             print_success "已选择 OpenAI（GPT 官方）"
             ;;
         3)
             PROVIDER_NAME="openrouter"
-            NEWAPI_BASE_URL=""
-            API_FORMAT=""
+            NEWAPI_BASE_URL="https://openrouter.ai/api/v1"
+            API_FORMAT="openai-completions"
             print_success "已选择 OpenRouter"
             ;;
         4)
@@ -249,8 +249,8 @@ step1() {
             ;;
         *)
             PROVIDER_NAME="anthropic"
-            NEWAPI_BASE_URL=""
-            API_FORMAT=""
+            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
+            API_FORMAT="anthropic-messages"
             print_success "已选择 Anthropic（Claude 官方）"
             ;;
     esac
