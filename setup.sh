@@ -160,10 +160,12 @@ sleep 1
 
 # ==================== 加载已有配置 ====================
 
+PROVIDER_NAME=""
 NEWAPI_BASE_URL=""
 NEWAPI_API_KEY=""
-PRIMARY_MODEL="claude-sonnet-4-20260514"
-THINKING_MODEL="claude-opus-4-20260514"
+API_FORMAT="openai"
+PRIMARY_MODEL=""
+THINKING_MODEL=""
 SETUP_WECHAT="no"
 SHARE_CHROME="no"
 BRAVE_API_KEY=""
@@ -182,36 +184,102 @@ fi
 
 step1() {
     print_header
-    print_step 1 "模型供应商配置（New-api）"
+    print_step 1 "模型供应商选择"
 
-    print_info "New-api 是开源 API 管理平台，提供统一入口访问多家模型。"
-    print_info "如果还没有 New-api，请参考教程部署：https://github.com/Calcium-Ion/new-api"
+    echo -e "  ${BOLD}选择你的 API 供应商：${NC}"
     echo ""
+    echo -e "  ${GREEN}1)${NC} Anthropic（Claude 官方）       ${DIM}api.anthropic.com${NC}"
+    echo -e "  ${GREEN}2)${NC} OpenAI（GPT 官方）             ${DIM}api.openai.com${NC}"
+    echo -e "  ${GREEN}3)${NC} DeepSeek（深度求索官方）        ${DIM}api.deepseek.com${NC}"
+    echo -e "  ${GREEN}4)${NC} SiliconFlow（硅基流动）         ${DIM}api.siliconflow.cn${NC}"
+    echo -e "  ${GREEN}5)${NC} OpenRouter（多模型聚合）        ${DIM}openrouter.ai${NC}"
+    echo -e "  ${GREEN}6)${NC} Kimi（月之暗面官方）            ${DIM}api.moonshot.cn${NC}"
+    echo -e "  ${GREEN}7)${NC} 自定义（New-api / 自建代理）"
+    echo ""
+    echo -en "  选择 ${DIM}[1]${NC}: "
+    read -r provider_choice
+    provider_choice=${provider_choice:-1}
 
-    while true; do
-        prompt_input "New-api Base URL (必须以 /v1 结尾)" "$NEWAPI_BASE_URL" NEWAPI_BASE_URL
-
-        if [ -z "$NEWAPI_BASE_URL" ]; then
-            print_error "Base URL 不能为空"
-            continue
-        fi
-
-        if ! validate_url "$NEWAPI_BASE_URL"; then
-            print_error "URL 格式不正确，必须以 http(s):// 开头，以 /v1 结尾"
-            print_info "示例: https://your-server.com/v1"
+    case $provider_choice in
+        1)
+            PROVIDER_NAME="anthropic"
+            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
+            API_FORMAT="anthropic-messages"
+            print_success "已选择 Anthropic（Claude 官方）"
+            ;;
+        2)
+            PROVIDER_NAME="openai"
+            NEWAPI_BASE_URL="https://api.openai.com/v1"
+            API_FORMAT="openai"
+            print_success "已选择 OpenAI（GPT 官方）"
+            ;;
+        3)
+            PROVIDER_NAME="deepseek"
+            NEWAPI_BASE_URL="https://api.deepseek.com/v1"
+            API_FORMAT="openai"
+            print_success "已选择 DeepSeek"
+            ;;
+        4)
+            PROVIDER_NAME="siliconflow"
+            NEWAPI_BASE_URL="https://api.siliconflow.cn/v1"
+            API_FORMAT="openai"
+            print_success "已选择 SiliconFlow（硅基流动）"
+            ;;
+        5)
+            PROVIDER_NAME="openrouter"
+            NEWAPI_BASE_URL="https://openrouter.ai/api/v1"
+            API_FORMAT="openai"
+            print_success "已选择 OpenRouter"
+            ;;
+        6)
+            PROVIDER_NAME="kimi"
+            NEWAPI_BASE_URL="https://api.moonshot.cn/v1"
+            API_FORMAT="openai"
+            print_success "已选择 Kimi（月之暗面）"
+            ;;
+        7)
+            PROVIDER_NAME="custom"
             echo ""
-            NEWAPI_BASE_URL=""
-            continue
-        fi
+            while true; do
+                prompt_input "自定义 Base URL (必须以 /v1 结尾)" "$NEWAPI_BASE_URL" NEWAPI_BASE_URL
+                if [ -z "$NEWAPI_BASE_URL" ]; then
+                    print_error "Base URL 不能为空"
+                    continue
+                fi
+                if ! validate_url "$NEWAPI_BASE_URL"; then
+                    print_error "URL 格式不正确，必须以 http(s):// 开头，以 /v1 结尾"
+                    NEWAPI_BASE_URL=""
+                    continue
+                fi
+                break
+            done
 
-        print_success "URL 格式正确"
-        break
-    done
+            echo ""
+            echo -e "  ${BOLD}API 协议格式：${NC}"
+            echo -e "  ${GREEN}1)${NC} OpenAI 兼容 ${DIM}（大多数国产模型、代理）${NC}"
+            echo -e "  ${GREEN}2)${NC} Anthropic Messages ${DIM}（Claude 系列、New-api 代理）${NC}"
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r fmt_choice
+            fmt_choice=${fmt_choice:-1}
+            if [ "$fmt_choice" = "2" ]; then
+                API_FORMAT="anthropic-messages"
+            else
+                API_FORMAT="openai"
+            fi
+            print_success "自定义供应商: $NEWAPI_BASE_URL ($API_FORMAT)"
+            ;;
+        *)
+            PROVIDER_NAME="anthropic"
+            NEWAPI_BASE_URL="https://api.anthropic.com/v1"
+            API_FORMAT="anthropic-messages"
+            print_success "已选择 Anthropic（Claude 官方）"
+            ;;
+    esac
 
     echo ""
 
     while true; do
-        prompt_secret "New-api API Key (sk-开头)" "$NEWAPI_API_KEY" NEWAPI_API_KEY
+        prompt_secret "API Key" "$NEWAPI_API_KEY" NEWAPI_API_KEY
 
         if [ -z "$NEWAPI_API_KEY" ]; then
             print_error "API Key 不能为空"
@@ -229,7 +297,7 @@ step1() {
     done
 
     echo ""
-    echo -e "  ${DIM}按 Enter 继续，输入 r 重新填写${NC}"
+    echo -e "  ${DIM}按 Enter 继续，输入 r 重新选择${NC}"
     read -r action
     if [[ "$action" = "r" || "$action" = "R" ]]; then
         NEWAPI_BASE_URL=""
@@ -245,35 +313,111 @@ step2() {
     print_header
     print_step 2 "模型选择"
 
-    print_info "primary = 日常对话（建议 Sonnet，性价比最高）"
-    print_info "thinking = 深度推理（建议 Opus，复杂任务自动切换）"
+    print_info "primary = 日常对话，thinking = 深度推理（复杂任务自动切换）"
     echo ""
 
-    echo -e "  ${BOLD}推荐模型组合：${NC}"
-    echo -e "  ${GREEN}1)${NC} claude-sonnet-4 + claude-opus-4 ${DIM}（推荐，平衡性价比）${NC}"
-    echo -e "  ${GREEN}2)${NC} claude-sonnet-4 + claude-sonnet-4 ${DIM}（纯省钱模式）${NC}"
-    echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-    echo ""
-    echo -en "  选择 ${DIM}[1]${NC}: "
-    read -r model_choice
-    model_choice=${model_choice:-1}
+    echo -e "  ${BOLD}推荐模型组合（${PROVIDER_NAME}）：${NC}"
 
-    case $model_choice in
-        1)
-            PRIMARY_MODEL="claude-sonnet-4-20260514"
-            THINKING_MODEL="claude-opus-4-20260514"
+    case "$PROVIDER_NAME" in
+        anthropic)
+            echo -e "  ${GREEN}1)${NC} claude-sonnet-4 + claude-opus-4 ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} claude-sonnet-4 + claude-sonnet-4 ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
+                2) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-sonnet-4-20260514" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
+            esac
             ;;
-        2)
-            PRIMARY_MODEL="claude-sonnet-4-20260514"
-            THINKING_MODEL="claude-sonnet-4-20260514"
+        openai)
+            echo -e "  ${GREEN}1)${NC} gpt-4o + o3 ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} gpt-4o + gpt-4o ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
+                2) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="gpt-4o" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
+            esac
             ;;
-        3)
-            prompt_input "Primary 模型名称" "$PRIMARY_MODEL" PRIMARY_MODEL
-            prompt_input "Thinking 模型名称" "$THINKING_MODEL" THINKING_MODEL
+        deepseek)
+            echo -e "  ${GREEN}1)${NC} deepseek-chat + deepseek-reasoner ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} deepseek-chat + deepseek-chat ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
+                2) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-chat" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
+            esac
+            ;;
+        siliconflow)
+            echo -e "  ${GREEN}1)${NC} Qwen/Qwen3-235B-A22B + deepseek-ai/DeepSeek-R1 ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} deepseek-ai/DeepSeek-V3 + deepseek-ai/DeepSeek-R1 ${DIM}（DeepSeek 组合）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+                2) PRIMARY_MODEL="deepseek-ai/DeepSeek-V3"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+            esac
+            ;;
+        openrouter)
+            echo -e "  ${GREEN}1)${NC} anthropic/claude-sonnet-4 + anthropic/claude-opus-4 ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} openai/gpt-4o + openai/o3 ${DIM}（GPT 组合）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
+                2) PRIMARY_MODEL="openai/gpt-4o"; THINKING_MODEL="openai/o3" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
+            esac
+            ;;
+        kimi)
+            echo -e "  ${GREEN}1)${NC} moonshot-v1-128k + moonshot-v1-128k ${DIM}（Kimi 最强）${NC}"
+            echo -e "  ${GREEN}2)${NC} moonshot-v1-32k + moonshot-v1-128k ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
+                2) PRIMARY_MODEL="moonshot-v1-32k"; THINKING_MODEL="moonshot-v1-128k" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
+            esac
             ;;
         *)
-            PRIMARY_MODEL="claude-sonnet-4-20260514"
-            THINKING_MODEL="claude-opus-4-20260514"
+            prompt_input "Primary 模型名称" "$PRIMARY_MODEL" PRIMARY_MODEL
+            prompt_input "Thinking 模型名称" "$THINKING_MODEL" THINKING_MODEL
             ;;
     esac
 
@@ -469,8 +613,10 @@ save_env() {
     cat > .env << EOF
 # OpenClaw 配置（由 setup.sh 生成于 $(date '+%Y-%m-%d %H:%M:%S')）
 
+PROVIDER_NAME=$PROVIDER_NAME
 NEWAPI_BASE_URL=$NEWAPI_BASE_URL
 NEWAPI_API_KEY=$NEWAPI_API_KEY
+API_FORMAT=$API_FORMAT
 PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
@@ -530,10 +676,10 @@ do_install() {
 {
   "models": {
     "providers": {
-      "new-api": {
+      "${PROVIDER_NAME}": {
         "baseUrl": "${NEWAPI_BASE_URL}",
         "apiKey": "${NEWAPI_API_KEY}",
-        "api": "anthropic-messages",
+        "api": "${API_FORMAT}",
         "models": [
           {
             "id": "${PRIMARY_MODEL}",
@@ -550,7 +696,7 @@ do_install() {
   },
   "agents": {
     "defaults": {
-      "model": "new-api/${PRIMARY_MODEL}"
+      "model": "${PROVIDER_NAME}/${PRIMARY_MODEL}"
     }
   },
   "plugins": {
