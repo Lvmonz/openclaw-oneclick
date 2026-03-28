@@ -626,13 +626,22 @@ USEREOF
     done
     echo -e "${NC}"
 
-    # 注入配置文件到容器内
+    # 注入配置文件到容器内 + 修复权限
     echo -en "  ${DIM}注入配置文件..."
+
+    # 确保目录存在且权限正确（卷由 root 创建，需要 chown 给 node）
+    docker exec -u root openclaw-main sh -c '
+        mkdir -p /home/node/.openclaw/workspace /home/node/.openclaw/extensions /home/node/.openclaw/skills
+        chown -R node:node /home/node/.openclaw
+    ' 2>/dev/null
+
     docker cp "$tmpdir/openclaw.json" openclaw-main:/home/node/.openclaw/openclaw.json 2>/dev/null
-    docker exec openclaw-main mkdir -p /home/node/.openclaw/workspace 2>/dev/null
     for f in "$tmpdir"/*.md; do
         [ -f "$f" ] && docker cp "$f" openclaw-main:/home/node/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
     done
+
+    # docker cp 后文件属主可能是 root，再次修正
+    docker exec -u root openclaw-main chown -R node:node /home/node/.openclaw 2>/dev/null
     echo -e " 完成${NC}"
 
     # 清理临时目录
