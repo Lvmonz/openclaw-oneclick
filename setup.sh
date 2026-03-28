@@ -662,21 +662,16 @@ do_install() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    # 根据是否是内置 Provider 动态拼接 API 参数
-    local provider_props="\"apiKey\": \"${NEWAPI_API_KEY}\","
-    if [ -n "$API_FORMAT" ] && [ -n "$NEWAPI_BASE_URL" ]; then
-        provider_props="\"baseUrl\": \"${NEWAPI_BASE_URL}\",
-        \"apiKey\": \"${NEWAPI_API_KEY}\",
-        \"api\": \"${API_FORMAT}\","
-    fi
-
-    # openclaw.json
-    cat > "$tmpdir/openclaw.json" << JSONEOF
+    local json_content=""
+    if [ "$PROVIDER_NAME" = "custom" ]; then
+        json_content=$(cat << JSONEOF
 {
   "models": {
     "providers": {
-      "${PROVIDER_NAME}": {
-        ${provider_props}
+      "custom": {
+        "baseUrl": "${NEWAPI_BASE_URL}",
+        "apiKey": "${NEWAPI_API_KEY}",
+        "api": "${API_FORMAT}",
         "models": [
           {
             "id": "${PRIMARY_MODEL}",
@@ -692,6 +687,29 @@ do_install() {
   },
   "agents": {
     "defaults": {
+      "model": "custom/${PRIMARY_MODEL}"
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+        )
+    else
+        # 官方原生支持的 Providers，必须挂载在 env 下才能触发原生优化引擎，而不是 models.providers 强制覆写模式
+        local env_key=""
+        if [ "$PROVIDER_NAME" = "anthropic" ]; then env_key="ANTHROPIC_API_KEY"; fi
+        if [ "$PROVIDER_NAME" = "openai" ]; then env_key="OPENAI_API_KEY"; fi
+        if [ "$PROVIDER_NAME" = "openrouter" ]; then env_key="OPENROUTER_API_KEY"; fi
+
+        json_content=$(cat << JSONEOF
+{
+  "env": {
+    "${env_key}": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
       "model": "${PROVIDER_NAME}/${PRIMARY_MODEL}"
     }
   },
@@ -700,6 +718,10 @@ do_install() {
   }
 }
 JSONEOF
+        )
+    fi
+
+    echo "$json_content" > "$tmpdir/openclaw.json"
 
     # USER.md
     cat > "$tmpdir/USER.md" << USEREOF
