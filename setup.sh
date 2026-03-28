@@ -587,38 +587,11 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- **用户已开启浏览器远程控制（Chrome Bridge + CDP）**
-
-#### 重要：不要使用 browser 工具
-容器内没有浏览器二进制文件。OpenClaw 内置的 browser 工具会报错 'No supported browser found'。
-一切浏览器操作通过 curl 调用 CDP API 完成。
-
-#### Chrome Bridge API（管理 Chrome 生命周期）
-- 启动 Chrome：curl http://host.docker.internal:9223/start
-- 关闭 Chrome：curl http://host.docker.internal:9223/stop
-- 查看状态：curl http://host.docker.internal:9223/status
-
-#### CDP API（操作浏览器）
-⚠️ 关键：所有 CDP 请求必须添加 -H 'Host: localhost'，否则 Chrome 安全机制会拒绝请求。
-
-- 列出所有标签页：
-  curl -s -H 'Host: localhost' http://host.docker.internal:9222/json/list
-- 打开新标签页（注意用 PUT 不是 GET）：
-  curl -s -X PUT -H 'Host: localhost' 'http://host.docker.internal:9222/json/new?https://www.baidu.com'
-- 获取页面内容（通过 WebSocket 发送 CDP 命令）：
-  先从 /json/list 获取页面的 webSocketDebuggerUrl，然后用 wscat 或代码连接
-- 关闭标签页：
-  curl -s -H 'Host: localhost' 'http://host.docker.internal:9222/json/close/{targetId}'
-- 查看 Chrome 版本：
-  curl -s -H 'Host: localhost' http://host.docker.internal:9222/json/version
-
-#### 注意事项
-- Chrome 使用独立 profile（/tmp/chrome-cdp-profile），没有用户的登录态
-- 需要登录时请让用户在弹出的 Chrome 窗口中手动登录
-- 不要尝试用 Playwright connectOverCDP，会因 Host 头限制失败"
+        chrome_section="- **用户已开启浏览器远程控制**（Chrome Bridge + CDP）
+- 需要操作浏览器时，先查看 /home/node/.openclaw/workspace/skills/chrome-cdp.md 获取完整使用指南
+- 简要：不要用 browser 工具和 Playwright，用 curl 调 CDP API，所有请求加 -H 'Host: localhost'"
     else
         chrome_section="- 你没有可用的浏览器，只能通过 fetch/curl 获取网页内容（无 JS 渲染）
-- 用户未开启浏览器远程控制
 - 如需浏览器操作，请让用户运行 ./setup.sh 并启用 Chrome CDP"
     fi
 
@@ -722,6 +695,14 @@ SOULEOF
     for f in "$tmpdir"/*.md; do
         [ -f "$f" ] && docker cp "$f" openclaw-main:/home/node/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
     done
+
+    # 复制 skills 模板到容器
+    if [ -d "templates/skills" ]; then
+        docker exec -u root openclaw-main mkdir -p /home/node/.openclaw/workspace/skills 2>/dev/null
+        for f in templates/skills/*.md; do
+            [ -f "$f" ] && docker cp "$f" openclaw-main:/home/node/.openclaw/workspace/skills/"$(basename "$f")" 2>/dev/null
+        done
+    fi
 
     # docker cp 后文件属主可能是 root，再次修正
     docker exec -u root openclaw-main chown -R node:node /home/node/.openclaw 2>/dev/null
