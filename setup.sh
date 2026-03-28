@@ -587,13 +587,14 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- 你可以使用内置的 headless Chrome 浏览器浏览网页
+        chrome_section="- 你没有内置的图形浏览器，但可以通过 fetch/curl 发起 HTTP 请求来获取网页内容
 - **用户已授权共享本地 Chrome Cookies**：宿主机的 Chrome 用户数据已挂载到 /home/node/.chrome-host/（只读）
-- 你可以利用这些 Cookies 访问用户已登录的网站，无需重新登录
-- 注意：这些是用户的真实登录凭证，使用时要谨慎，不要泄露"
+- 你可以读取 /home/node/.chrome-host/Default/Cookies 中的数据，配合 HTTP 请求访问用户已登录的网站
+- 注意：这些是用户的真实登录凭证，使用时要谨慎，不要泄露
+- 如需完整的浏览器功能（如 JavaScript 渲染），可让用户安装 puppeteer"
     else
-        chrome_section="- 你可以使用内置的 headless Chrome 浏览器浏览网页
-- 用户未开启 Chrome Cookies 共享，你只能以未登录状态访问网站
+        chrome_section="- 你没有内置的图形浏览器，但可以通过 fetch/curl 发起 HTTP 请求来获取网页内容
+- 用户未开启 Chrome Cookies 共享，你只能以未登录状态获取网页内容
 - 如需访问需要登录的网站，请让用户提供账号信息或开启 Chrome 共享"
     fi
 
