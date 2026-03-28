@@ -457,18 +457,17 @@ step3() {
 
     echo ""
 
-    # Chrome 远程控制（CDP）
-    echo -e "  ${BOLD}🌐 浏览器远程控制（Chrome CDP）${NC}"
-    print_info "让 AI 通过 Chrome DevTools Protocol 直接操控你的浏览器。"
-    print_info "AI 可以像人一样点击、输入、截图，自动继承所有登录状态。"
+    # 浏览器功能
+    echo -e "  ${BOLD}🌐 浏览器功能${NC}"
+    print_info "在容器内安装 Chromium（headless），AI 可以直接浏览网页。"
+    print_info "支持：打开网页、截图、点击、输入、执行 JavaScript。"
     echo ""
-    echo -e "  ${DIM}使用前需运行：./start-chrome-debug.sh 启动 Chrome 调试模式${NC}"
-    print_warn "⚠️ AI 能看到和操作你浏览器中的所有内容（包括已登录的网站）"
+    print_info "安装 Chromium 会增加约 200-400MB 容器空间。"
     echo ""
 
-    if confirm "  是否启用浏览器远程控制？"; then
+    if confirm "  是否安装浏览器功能？"; then
         SHARE_CHROME="yes"
-        print_success "将配置 CDP 连接（记得先运行 ./start-chrome-debug.sh）"
+        print_success "将在安装阶段安装 Chromium"
     else
         SHARE_CHROME="no"
         print_info "已跳过浏览器控制"
@@ -629,12 +628,6 @@ USER_NAME=$USER_NAME
 USER_LANG=$USER_LANG
 EOF
 
-    # 根据 SHARE_CHROME 设置 CDP 连接地址
-    if [ "$SHARE_CHROME" = "yes" ]; then
-        echo "CHROME_CDP_URL=http://host.docker.internal:9222" >> .env
-    else
-        echo "CHROME_CDP_URL=" >> .env
-    fi
 }
 
 # ==================== 执行安装 ====================
@@ -733,12 +726,12 @@ USEREOF
     # 动态生成 SOUL.md（根据配置注入环境信息）
     local chrome_section=""
     if [ "$SHARE_CHROME" = "yes" ]; then
-        chrome_section="- **用户已开启浏览器远程控制**（Chrome Bridge + CDP）
-- 需要操作浏览器时，先查看 /home/node/.openclaw/workspace/skills/chrome-cdp.md 获取完整使用指南
-- 简要：不要用 browser 工具和 Playwright，用 curl 调 CDP API，所有请求加 -H 'Host: localhost'"
+        chrome_section="- **容器内已安装 Chromium 浏览器**，你可以直接使用内置 browser 工具
+- 支持：打开网页、截图、点击、输入、执行 JavaScript、读取页面内容
+- 浏览器以 headless 模式运行，没有用户的登录态"
     else
-        chrome_section="- 你没有可用的浏览器，只能通过 fetch/curl 获取网页内容（无 JS 渲染）
-- 如需浏览器操作，请让用户运行 ./setup.sh 并启用 Chrome CDP"
+        chrome_section="- 容器内未安装浏览器，你只能通过 fetch/curl 获取网页内容（无 JS 渲染）
+- 如需浏览器功能，请让用户运行 ./setup.sh 并启用浏览器"
     fi
 
     cat > "$tmpdir/SOUL.md" << SOULEOF
@@ -875,16 +868,15 @@ SOULEOF
     done
     print_success "文件读写（内置 File System）"
 
-    # 如果启用了 Chrome CDP，安装 playwright（需要 root 权限）
+    # 如果启用了浏览器，安装 Chromium
     if [ "$SHARE_CHROME" = "yes" ]; then
-        echo -en "    ${DIM}安装 Playwright（浏览器控制）..."
-        if docker exec -u root openclaw-main npm install -g playwright 2>/dev/null; then
-            docker exec -u root openclaw-main chown -R node:node /usr/local/lib/node_modules/playwright 2>/dev/null
+        echo -en "    ${DIM}安装 Chromium 浏览器（约 200-400MB）..."
+        if docker exec -u root openclaw-main sh -c 'apt-get update -qq && apt-get install -y -qq chromium > /dev/null 2>&1' 2>/dev/null; then
             echo -e " 完成${NC}"
-            print_success "Playwright 已安装（CDP 浏览器控制）"
+            print_success "Chromium 浏览器已安装（browser 工具可直接使用）"
         else
             echo -e " ${NC}"
-            print_warn "Playwright 安装失败（可手动：docker exec -u root openclaw-main npm install -g playwright）"
+            print_warn "Chromium 安装失败（可手动：docker exec -u root openclaw-main apt-get install -y chromium）"
         fi
     fi
 
@@ -924,49 +916,7 @@ SOULEOF
     sleep 5
     print_success "容器已重启"
 
-    # 如果启用了 CDP，启动 Chrome Bridge 服务
-    if [ "$SHARE_CHROME" = "yes" ]; then
-        echo ""
-        echo -e "  ${BOLD}🌐 启动 Chrome Bridge 服务...${NC}"
 
-        if [ -f "./chrome-bridge.sh" ]; then
-            # 关闭已有的 bridge 进程
-            pkill -f "chrome-bridge.sh" 2>/dev/null || true
-            sleep 1
-
-            # 后台启动 bridge
-            chmod +x ./chrome-bridge.sh
-            nohup ./chrome-bridge.sh > /tmp/chrome-bridge.log 2>&1 &
-            sleep 2
-
-            # 通过 bridge 启动 Chrome
-            echo -en "    ${DIM}启动 Chrome 调试实例"
-            local bridge_result
-            bridge_result=$(curl -s "http://localhost:9223/start" 2>/dev/null || echo '{"ok":false}')
-
-            # 等待 CDP 就绪
-            local cdp_ready=false
-            for i in 1 2 3 4 5 6 7 8 9 10; do
-                sleep 1
-                echo -en "."
-                if curl -s "http://localhost:9222/json/version" > /dev/null 2>&1; then
-                    cdp_ready=true
-                    break
-                fi
-            done
-            echo -e "${NC}"
-
-            if [ "$cdp_ready" = "true" ]; then
-                print_success "Chrome Bridge 已启动（桥接端口 9223，CDP 端口 9222）"
-                print_info "AI 可通过 curl host.docker.internal:9223/start 按需启动 Chrome"
-                print_info "你的日常 Chrome 不受影响（使用独立 profile）"
-            else
-                print_warn "Chrome 启动失败，查看日志：cat /tmp/chrome-bridge.log"
-            fi
-        else
-            print_warn "未找到 chrome-bridge.sh"
-        fi
-    fi
 
     # ==================== 完成 ====================
     echo ""
@@ -990,10 +940,8 @@ SOULEOF
 
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo ""
-        echo -e "  ${YELLOW}${BOLD}🌐 浏览器控制${NC}:"
-        echo -e "    ${DIM}# Chrome Bridge 已在后台运行（端口 9223）${NC}"
-        echo -e "    ${DIM}# AI 会自动按需启动/关闭 Chrome（独立 profile，不影响日常浏览器）${NC}"
-        echo -e "    ${DIM}# 重启电脑后需要重新运行：./chrome-bridge.sh &${NC}"
+        echo -e "  ${YELLOW}${BOLD}🌐 浏览器${NC}:"
+        echo -e "    ${DIM}# Chromium 已安装在容器内，AI 可直接使用 browser 工具${NC}"
     fi
 
     echo ""
