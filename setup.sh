@@ -165,6 +165,7 @@ NEWAPI_API_KEY=""
 PRIMARY_MODEL="claude-sonnet-4-20260514"
 THINKING_MODEL="claude-opus-4-20260514"
 SETUP_WECHAT="no"
+SHARE_CHROME="no"
 BRAVE_API_KEY=""
 USER_NAME=""
 USER_LANG="中文"
@@ -312,6 +313,22 @@ step3() {
 
     echo ""
 
+    # Chrome Cookies 共享
+    echo -e "  ${BOLD}🌐 共享本地 Chrome 浏览器（Cookies + 登录状态）${NC}"
+    print_info "让 AI 使用你本地 Chrome 的 Cookies，无需重新登录即可访问你已登录的网站。"
+    print_warn "⚠️ 安全提示：AI 可以读取你所有网站的登录凭证（银行、邮箱等），以只读方式挂载。"
+    echo ""
+
+    if confirm "  是否共享本地 Chrome Cookies？"; then
+        SHARE_CHROME="yes"
+        print_success "将挂载 Chrome 用户数据（只读模式）"
+    else
+        SHARE_CHROME="no"
+        print_info "已跳过 Chrome 共享"
+    fi
+
+    echo ""
+
     # Brave Search
     echo -e "  ${BOLD}🔍 联网搜索（Brave Search API）${NC}"
     print_info "让 AI 像用 Google 一样搜索互联网，获取实时信息。"
@@ -454,6 +471,7 @@ NEWAPI_API_KEY=$NEWAPI_API_KEY
 PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
+SHARE_CHROME=$SHARE_CHROME
 BRAVE_API_KEY=$BRAVE_API_KEY
 TZ=$TZ
 OPENCLAW_GATEWAY_TOKEN=$OPENCLAW_GATEWAY_TOKEN
@@ -461,6 +479,24 @@ OPENCLAW_GATEWAY_TOKEN=$OPENCLAW_GATEWAY_TOKEN
 USER_NAME=$USER_NAME
 USER_LANG=$USER_LANG
 EOF
+
+    # 根据 SHARE_CHROME 设置 Chrome 路径
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        local chrome_path=""
+        if [ "$(uname)" = "Darwin" ]; then
+            chrome_path="$HOME/Library/Application Support/Google/Chrome"
+        else
+            chrome_path="$HOME/.config/google-chrome"
+        fi
+        if [ -d "$chrome_path" ]; then
+            echo "CHROME_USER_DATA=$chrome_path" >> .env
+        else
+            echo "CHROME_USER_DATA=/dev/null" >> .env
+            print_warn "未找到 Chrome 目录：$chrome_path"
+        fi
+    else
+        echo "CHROME_USER_DATA=/dev/null" >> .env
+    fi
 }
 
 # ==================== 执行安装 ====================
@@ -480,12 +516,13 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
-    # Step 1: 准备配置文件（写到临时目录，稍后注入容器）
+    # Step 1: 清空旧数据 + 准备配置文件（写到临时目录，稍后注入容器）
     echo ""
-    echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
+    echo -e "  ${BLUE}[1/7]${NC} 清空旧数据并准备配置文件..."
 
-    # 停止旧容器
+    # 停止旧容器并销毁旧的数据卷（完全清空）
     docker compose down 2>/dev/null || true
+    docker volume rm "$(basename "$(pwd)")_openclaw-data" 2>/dev/null || true
 
     # 写入临时文件，后续 docker cp 注入容器
     local tmpdir
