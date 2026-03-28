@@ -508,13 +508,18 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
-    # Step 1: 清空旧数据 + 准备配置文件（写到临时目录，稍后注入容器）
+    # Step 1: 准备配置文件（写到临时目录，稍后注入容器）
     echo ""
-    echo -e "  ${BLUE}[1/7]${NC} 清空旧数据并准备配置文件..."
+    echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
 
-    # 停止旧容器并销毁旧的数据卷（完全清空）
+    # 停止旧容器
     docker compose down 2>/dev/null || true
-    docker volume rm "$(basename "$(pwd)")_openclaw-data" 2>/dev/null || true
+
+    # 仅在 --clean 参数时销毁数据卷（否则保留插件/skills）
+    if [ "${CLEAN_INSTALL:-}" = "yes" ]; then
+        docker volume rm "$(basename "$(pwd)")_openclaw-data" 2>/dev/null || true
+        print_info "已清空旧数据卷（--clean 模式）"
+    fi
 
     # 写入临时文件，后续 docker cp 注入容器
     local tmpdir
@@ -718,25 +723,38 @@ SOULEOF
     done
     print_success "文件读写（内置 File System）"
 
-    # 如果启用了 Chrome CDP，安装 playwright
+    # 如果启用了 Chrome CDP，安装 playwright（需要 root 权限）
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo -en "    ${DIM}安装 Playwright（浏览器控制）..."
-        docker exec openclaw-main npm install -g playwright 2>/dev/null && \
-            echo -e " 完成${NC}" && \
-            print_success "Playwright 已安装（CDP 浏览器控制）" || \
-            (echo -e " ${NC}" && print_warn "Playwright 安装失败（可稍后手动安装：npm install -g playwright）")
+        if docker exec -u root openclaw-main npm install -g playwright 2>/dev/null; then
+            docker exec -u root openclaw-main chown -R node:node /usr/local/lib/node_modules/playwright 2>/dev/null
+            echo -e " 完成${NC}"
+            print_success "Playwright 已安装（CDP 浏览器控制）"
+        else
+            echo -e " ${NC}"
+            print_warn "Playwright 安装失败（可手动：docker exec -u root openclaw-main npm install -g playwright）"
+        fi
     fi
 
     # Step 5: 微信
     echo ""
     echo -e "  ${BLUE}[5/7]${NC} 配置通讯频道..."
     if [ "$SETUP_WECHAT" = "yes" ]; then
-        echo -en "    ${DIM}安装微信插件（约 1-2 分钟）..."
-        docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install 2>/dev/null && \
-            echo -e " 完成${NC}" && \
-            print_success "微信插件 openclaw-weixin 已安装" || \
-            (echo -e " ${NC}" && print_warn "微信插件安装失败（可稍后手动安装）")
-        print_warn "微信需扫码授权（见下方说明）"
+        # 检查是否已安装
+        if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
+            print_success "微信插件 openclaw-weixin 已存在，跳过安装"
+        else
+            echo -en "    ${DIM}安装微信插件（约 1-2 分钟）..."
+            docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install 2>/dev/null
+            # npx 退出码可能非零（QR登录步骤失败），但插件实际已安装，所以检查目录而非退出码
+            echo -e " ${NC}"
+            if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
+                print_success "微信插件 openclaw-weixin 安装成功"
+            else
+                print_warn "微信插件安装失败（可手动：docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install）"
+            fi
+        fi
+        print_info "微信需扫码授权（见下方说明）"
     else
         print_info "微信未配置，已跳过"
     fi
@@ -771,15 +789,21 @@ SOULEOF
         fi
 
         if [ -n "$chrome_bin" ] && ([ -f "$chrome_bin" ] || command -v "$chrome_bin" &>/dev/null); then
+            # 先关闭已有的 Chrome 实例（否则调试端口无法绑定）
+            if pgrep -f "Google Chrome" >/dev/null 2>&1 || pgrep -f "chrome" >/dev/null 2>&1; then
+                print_info "检测到已运行的 Chrome，正在关闭并重启..."
+                pkill -f "Google Chrome" 2>/dev/null || pkill -f "chrome" 2>/dev/null || true
+                sleep 2
+            fi
             "$chrome_bin" --remote-debugging-port=9222 --remote-allow-origins="*" --no-first-run --no-default-browser-check >/dev/null 2>&1 &
-            sleep 2
+            sleep 3
             if curl -s "http://localhost:9222/json/version" > /dev/null 2>&1; then
                 print_success "Chrome 调试模式已启动（端口 9222）"
                 print_info "AI 现在可以通过 CDP 控制你的浏览器"
                 print_info "关闭 Chrome 即可断开 AI 的浏览器控制"
             else
-                print_warn "Chrome 启动失败，可能有其他 Chrome 实例占用端口"
-                print_info "请关闭所有 Chrome 后运行：./start-chrome-debug.sh"
+                print_warn "Chrome 启动失败"
+                print_info "请手动运行：./start-chrome-debug.sh"
             fi
         else
             print_warn "未找到 Chrome，请先安装 Google Chrome"
@@ -821,6 +845,14 @@ SOULEOF
 }
 
 # ==================== 主流程 ====================
+
+# 解析参数
+CLEAN_INSTALL=""
+for arg in "$@"; do
+    case "$arg" in
+        --clean) CLEAN_INSTALL="yes" ;;
+    esac
+done
 
 step1
 step2
