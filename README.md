@@ -73,24 +73,24 @@ chmod +x setup.sh
 
 ## 🔄 运维与更新
 
-### 🧠 无伤切换 LLM 模型或重启
+### 🧠 更换大模型 (LLM) 与重启 Agent
 
 因为容器做了完善的数据挂载，**不需要重装**即可快速切换 Agent 的大脑：
 
-**方式一：CLI 热切换（推荐）**
-如果你在 `openclaw.json` (或已用 `./setup.sh` 配过多组 key)，可以直接使用内部命令行秒切：
+**场景一：只想换模型（API 供应商或 URL 没变）**
+比如你一开始选了深势 (DeepSeek)，想从 `deepseek-chat` 换成 `deepseek-reasoner`，直接用内部命令行秒切：
 ```bash
-# 举例：瞬间切换至 DeepSeek
-docker exec openclaw-main openclaw config set agents.defaults.model "deepseek/deepseek-chat"
-# 热加载生效
+# 修改格式：供应商前缀/模型名，例如 deepseek/deepseek-reasoner
+docker exec openclaw-main openclaw config set agents.defaults.model "deepseek/deepseek-reasoner"
+# 让新模型热加载生效
 docker exec openclaw-main openclaw gateway restart
 ```
 
-**方式二：重跑向导（最稳妥）**
-随时随地重新执行 `./setup.sh`（不带 `--clean` 参数）：
-- 向导会重新询问你需要哪个供应商、哪把 Key。
-- 它只会平滑刷新 `[1/7]` 的配置文件，**绝对不会**丢失你的微信登录态或浏览器资料。
-- 甚至如果你手滑按了 `Ctrl+Z`，新版脚本内置了安全自毁 trap 机制，也会物理超度僵尸锁。
+**场景二：想换一个全新的 API 供应商 / 修改本地 API URL（推荐重跑向导）**
+如果你想从 OpenAI 换到 Custom 代理，或者换个 API Key，最稳妥的方式是重新执行 `./setup.sh`（不带 `--clean` 参数）：
+- 它会重新询问你的 API URL、Key 和模型名，并写死到大模型配置里。
+- 因为没有加 `--clean`，它只会平滑刷新 `[1/7]` 的配置文件，**绝对不会**丢失你的微信登录态或浏览器配置库。
+- *注：如果你手滑按了 `Ctrl+Z`，新版脚本内置了安全自毁机制，会自动强制清理底层进程防止环境死锁。*
 
 ### ⚙️ 日常运维
 
