@@ -1098,6 +1098,15 @@ SOULEOF
         exit 1
     fi
 
+    # 修复浏览器 Volume 权限（如果启用了浏览器）
+    # Chrome 容器以非 root 用运行（UID=1000），而 Docker 默认创建的 Volume 为 root，会导致一直在 SingletonLock 权限报错重启
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo -en "  ${DIM}初始化浏览器配置卷..."
+        docker volume create "$(basename "$(pwd)")_browser_profile" >/dev/null 2>&1 || true
+        docker run --rm -v "$(basename "$(pwd)")_browser_profile":/data alpine chown -R 1000:1000 /data 2>/dev/null || true
+        echo -e " 完成${NC}"
+    fi
+
     # Step 3: 启动容器（自动加载 config/ 中的配置）
     echo ""
     echo -e "  ${BLUE}[3/7]${NC} 启动容器..."
