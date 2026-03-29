@@ -9,8 +9,10 @@
 - **无损升级与重装体验**：执行 `./setup.sh --clean`，大脑可以实现干净重生，而肢体（社交账号登录态）毫发无损。
 - **安装前 API 预检**：在拉取镜像前自动验证 API Key 连通性，避免装完才发现配错了。
 - **动态容器编排**：不启用浏览器时只启动大脑容器，节省系统资源。
-- 多供应商聚合支持（Anthropic / OpenAI / OpenRouter / DeepSeek / 硅基流动 / Kimi / 自定义代理）
-- 官方个人微信 ClawBot 插件扫码接入
+- 多供应商聚合支持（支持 10+ 平台：Anthropic / OpenAI / OpenRouter / DeepSeek / 硅基流动 / 智谱 / Kimi / Gemini / xAI / 本地大模型）
+- 官方个人微信 ClawBot 插件扫码接入，Agent 已深度配置 `TOOLS.md`，支持直接将高清图片和文件打入微信对话框。
+- **强制防死循环 Prompt**：增强版 `SOUL.md` 防线，当浏览器遇死爬虫（滑块、二维码验证）时，大模型主动中断重试并求援，彻底拒绝后台无脑 Token 消耗和微信消息轰炸。
+- 采用业界标准 `browserless/chrome` 作为底层驱动，完美规避内网 CDP 端口被 127.0.0.1 隔离无法连接的坑，并内置自动软链 999 权限。
 
 ## 📦 文件说明
 
@@ -71,7 +73,26 @@ chmod +x setup.sh
 
 ## 🔄 运维与更新
 
-### 日常运维
+### 🧠 无伤切换 LLM 模型或重启
+
+因为容器做了完善的数据挂载，**不需要重装**即可快速切换 Agent 的大脑：
+
+**方式一：CLI 热切换（推荐）**
+如果你在 `openclaw.json` (或已用 `./setup.sh` 配过多组 key)，可以直接使用内部命令行秒切：
+```bash
+# 举例：瞬间切换至 DeepSeek
+docker exec openclaw-main openclaw config set agents.defaults.model "deepseek/deepseek-chat"
+# 热加载生效
+docker exec openclaw-main openclaw gateway restart
+```
+
+**方式二：重跑向导（最稳妥）**
+随时随地重新执行 `./setup.sh`（不带 `--clean` 参数）：
+- 向导会重新询问你需要哪个供应商、哪把 Key。
+- 它只会平滑刷新 `[1/7]` 的配置文件，**绝对不会**丢失你的微信登录态或浏览器资料。
+- 甚至如果你手滑按了 `Ctrl+Z`，新版脚本内置了安全自毁 trap 机制，也会物理超度僵尸锁。
+
+### ⚙️ 日常运维
 
 ```bash
 # 启动（不带浏览器）
