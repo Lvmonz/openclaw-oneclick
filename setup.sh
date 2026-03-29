@@ -823,8 +823,9 @@ do_install() {
     echo ""
     echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
 
-    # 停止旧容器并清理孤儿容器（架构大版本更新时必备）
-    compose_cmd down --remove-orphans 2>/dev/null || true
+    # 瞬间强杀旧容器，避免由于大模型死锁导致 docker compose down 傻等 10 秒超时
+    compose_cmd kill 2>/dev/null || true
+    compose_cmd down --remove-orphans -t 1 2>/dev/null || true
 
     # 仅在 --clean 参数时销毁数据卷（否则保留插件/skills）
     if [ "${CLEAN_INSTALL:-}" = "yes" ]; then
