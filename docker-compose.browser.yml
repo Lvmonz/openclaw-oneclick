@@ -4,25 +4,21 @@ services:
       - openclaw-browser
 
   openclaw-browser:
-    image: zenika/alpine-chrome:with-puppeteer
+    image: browserless/chrome:latest
     container_name: openclaw-browser
     restart: unless-stopped
     security_opt:
       - seccomp:unconfined
-    command: [
-      "chromium-browser",
-      "--headless=new",
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--remote-debugging-port=9222",
-      "--remote-debugging-address=0.0.0.0",
-      "--user-data-dir=/home/chrome/user-data"
-    ]
-    shm_size: '2gb'
+    environment:
+      - PORT=9222
+      - CONNECTION_TIMEOUT=600000
+      - CHROME_REFRESH_TIME=600000
+      - DEFAULT_BLOCK_ADS=true
+      - DEFAULT_STEALTH=true
     ports:
       - "9222:9222"
     volumes:
-      - browser_profile:/home/chrome/user-data
+      - browser_profile:/home/browserless/chrome/user-data
 
 volumes:
   browser_profile:
