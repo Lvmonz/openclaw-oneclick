@@ -875,7 +875,7 @@ do_install() {
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -898,7 +898,7 @@ JSONEOF
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -921,7 +921,7 @@ JSONEOF
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -945,7 +945,7 @@ JSONEOF
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -969,7 +969,7 @@ JSONEOF
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -1004,7 +1004,7 @@ JSONEOF
     }
   },
   "plugins": {
-    "allow": ["openclaw-weixin"]
+    "allow": []
   }
 }
 JSONEOF
@@ -1216,6 +1216,20 @@ SOULEOF
             fi
         fi
         print_info "微信需扫码授权（见下方说明）"
+
+        # 动态注入 plugins.allow（仅在插件实际存在后才声明，避免 stale config 警告）
+        if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
+            docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+allow = cfg.setdefault('plugins', {}).setdefault('allow', [])
+if 'openclaw-weixin' not in allow:
+    allow.append('openclaw-weixin')
+    p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+" 2>/dev/null
+            print_success "已将 openclaw-weixin 注入 plugins.allow"
+        fi
 
         # 自动修补微信插件的 block streaming 行为：
         # 官方插件默认 disableBlockStreaming: false，会导致流式回复被切成多条"累积式"消息，
