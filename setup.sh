@@ -238,6 +238,8 @@ if [ -f .env ]; then
 fi
 
 # ==================== Step 1: 模型供应商 ====================
+# 参考社区脚本: github.com/miaoxworld/OpenClawInstaller (setup_ai_provider)
+# 参考社区脚本: github.com/ProjectAILiberation/PocketClaw (change-api.sh)
 
 step1() {
     print_header
@@ -245,10 +247,16 @@ step1() {
 
     echo -e "  ${BOLD}选择你的 API 供应商：${NC}"
     echo ""
-    echo -e "  ${GREEN}1)${NC} Anthropic（Claude 官方推荐）"
-    echo -e "  ${GREEN}2)${NC} OpenAI（GPT 官方）"
-    echo -e "  ${GREEN}3)${NC} OpenRouter（多模型聚合推荐）"
-    echo -e "  ${GREEN}4)${NC} 自定义（New-api / 自建 OpenAI 兼容代理）"
+    echo -e "  ${GREEN}1)${NC} 🟣 Anthropic（Claude 官方直连）"
+    echo -e "  ${GREEN}2)${NC} 🟢 OpenAI（GPT 官方直连）"
+    echo -e "  ${GREEN}3)${NC} 🔄 OpenRouter（多模型聚合网关）"
+    echo -e "  ${GREEN}4)${NC} 🔵 DeepSeek（国产推荐）"
+    echo -e "  ${GREEN}5)${NC} 🌙 Kimi / Moonshot"
+    echo -e "  ${GREEN}6)${NC} ⚡ 硅基流动 SiliconFlow"
+    echo -e "  ${GREEN}7)${NC} 🇨🇳 智谱 GLM"
+    echo -e "  ${GREEN}8)${NC} 🔴 Google Gemini"
+    echo -e "  ${GREEN}9)${NC} 𝕏 xAI Grok"
+    echo -e "  ${GREEN}10)${NC} 🔧 自定义（New-api / One-api / 自建代理）"
     echo ""
     echo -en "  选择 ${DIM}[1]${NC}: "
     read -r provider_choice
@@ -274,6 +282,59 @@ step1() {
             print_success "已选择 OpenRouter"
             ;;
         4)
+            # 参考: miaoxworld/OpenClawInstaller position 20 + PocketClaw change-api.sh
+            PROVIDER_NAME="deepseek"
+            NEWAPI_BASE_URL="https://api.deepseek.com"
+            API_FORMAT="openai-completions"
+            print_success "已选择 DeepSeek"
+            ;;
+        5)
+            # 参考: miaoxworld/OpenClawInstaller position 20 (Kimi/Moonshot)
+            PROVIDER_NAME="kimi"
+            echo ""
+            echo -e "  ${BOLD}选择区域：${NC}"
+            echo -e "  ${GREEN}1)${NC} 国际版 (api.moonshot.ai)"
+            echo -e "  ${GREEN}2)${NC} 国内版 (api.moonshot.cn)"
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r kimi_region
+            kimi_region=${kimi_region:-1}
+            if [ "$kimi_region" = "2" ]; then
+                NEWAPI_BASE_URL="https://api.moonshot.cn/v1"
+            else
+                NEWAPI_BASE_URL="https://api.moonshot.ai/v1"
+            fi
+            API_FORMAT="openai-completions"
+            print_success "已选择 Kimi / Moonshot"
+            ;;
+        6)
+            # 参考: 3445286649/openclaw-deploy quick_config_siliconflow + PocketClaw
+            PROVIDER_NAME="siliconflow"
+            NEWAPI_BASE_URL="https://api.siliconflow.cn/v1"
+            API_FORMAT="openai-completions"
+            print_success "已选择 硅基流动 SiliconFlow"
+            ;;
+        7)
+            # 参考: PocketClaw change-api.sh (zhipu)
+            PROVIDER_NAME="zhipu"
+            NEWAPI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+            API_FORMAT="openai-completions"
+            print_success "已选择 智谱 GLM"
+            ;;
+        8)
+            # 参考: miaoxworld/OpenClawInstaller position 20 (google)
+            PROVIDER_NAME="google"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
+            print_success "已选择 Google Gemini"
+            ;;
+        9)
+            # 参考: miaoxworld/OpenClawInstaller position 21 (xai)
+            PROVIDER_NAME="xai"
+            NEWAPI_BASE_URL=""
+            API_FORMAT=""
+            print_success "已选择 xAI Grok"
+            ;;
+        10)
             PROVIDER_NAME="custom"
             echo ""
             while true; do
@@ -441,19 +502,71 @@ step2() {
             esac
             ;;
         kimi)
-            echo -e "  ${GREEN}1)${NC} moonshot-v1-128k + moonshot-v1-128k ${DIM}（Kimi 最强）${NC}"
-            echo -e "  ${GREEN}2)${NC} moonshot-v1-32k + moonshot-v1-128k ${DIM}（省钱）${NC}"
+            # 参考: miaoxworld/OpenClawInstaller position 20
+            echo -e "  ${GREEN}1)${NC} kimi-k2.5 + kimi-k2.5 ${DIM}（推荐，最新）${NC}"
+            echo -e "  ${GREEN}2)${NC} moonshot-v1-128k + moonshot-v1-128k ${DIM}（经典）${NC}"
             echo -e "  ${GREEN}3)${NC} 自定义模型名称"
             echo ""
             echo -en "  选择 ${DIM}[1]${NC}: "
             read -r model_choice
             model_choice=${model_choice:-1}
             case $model_choice in
-                1) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
-                2) PRIMARY_MODEL="moonshot-v1-32k"; THINKING_MODEL="moonshot-v1-128k" ;;
+                1) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
+                2) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
                 3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
                    prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
+                *) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
+            esac
+            ;;
+        zhipu)
+            # 参考: PocketClaw change-api.sh (zhipu/zhipu-pro)
+            echo -e "  ${GREEN}1)${NC} glm-4-plus + glm-4-plus ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} glm-4-flash + glm-4-plus ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
+                2) PRIMARY_MODEL="glm-4-flash"; THINKING_MODEL="glm-4-plus" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
+            esac
+            ;;
+        google)
+            # 参考: miaoxworld/OpenClawInstaller position 20
+            echo -e "  ${GREEN}1)${NC} gemini-2.5-pro + gemini-2.5-pro ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} gemini-2.5-flash + gemini-2.5-pro ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
+                2) PRIMARY_MODEL="gemini-2.5-flash"; THINKING_MODEL="gemini-2.5-pro" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
+            esac
+            ;;
+        xai)
+            # 参考: miaoxworld/OpenClawInstaller position 21 + PocketClaw
+            echo -e "  ${GREEN}1)${NC} grok-3 + grok-3 ${DIM}（推荐）${NC}"
+            echo -e "  ${GREEN}2)${NC} grok-3-mini + grok-3 ${DIM}（省钱）${NC}"
+            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo ""
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r model_choice
+            model_choice=${model_choice:-1}
+            case $model_choice in
+                1) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
+                2) PRIMARY_MODEL="grok-3-mini"; THINKING_MODEL="grok-3" ;;
+                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                *) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
             esac
             ;;
         *)
@@ -797,6 +910,54 @@ JSONEOF
         "primary": "openai/${PRIMARY_MODEL}",
         "fallbacks": [
           "openai/${THINKING_MODEL}"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+            )
+            ;;
+        google)
+            # 参考: miaoxworld/OpenClawInstaller position 20
+            json_content=$(cat << JSONEOF
+{
+  "env": {
+    "GEMINI_API_KEY": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "google/${PRIMARY_MODEL}",
+        "fallbacks": [
+          "google/${THINKING_MODEL}"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+            )
+            ;;
+        xai)
+            # 参考: miaoxworld/OpenClawInstaller position 21
+            json_content=$(cat << JSONEOF
+{
+  "env": {
+    "XAI_API_KEY": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "xai/${PRIMARY_MODEL}",
+        "fallbacks": [
+          "xai/${THINKING_MODEL}"
         ]
       }
     }
