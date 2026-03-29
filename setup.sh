@@ -732,21 +732,92 @@ do_install() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    # 根据是否是内置 Provider 动态拼接 API 参数
-    local provider_props="\"apiKey\": \"${NEWAPI_API_KEY}\","
-    if [ -n "$API_FORMAT" ] && [ -n "$NEWAPI_BASE_URL" ]; then
-        provider_props="\"baseUrl\": \"${NEWAPI_BASE_URL}\",
-        \"apiKey\": \"${NEWAPI_API_KEY}\",
-        \"api\": \"${API_FORMAT}\","
-    fi
-
-    # openclaw.json
-    cat > "$tmpdir/openclaw.json" << JSONEOF
+    # 根据供应商类型生成 openclaw.json
+    # 参考社区脚本: github.com/akhenda/ubuntu-openclaw-server (mortalezz-openclaw)
+    # 参考社区脚本: github.com/drhayf/drofbot
+    # 内置供应商使用 env 层注入 API Key + agents.defaults.model
+    # 自定义供应商使用 models.providers 显式配置
+    local json_content=""
+    case "$PROVIDER_NAME" in
+        openrouter)
+            json_content=$(cat << JSONEOF
+{
+  "env": {
+    "OPENROUTER_API_KEY": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openrouter/${PRIMARY_MODEL}",
+        "fallbacks": [
+          "openrouter/${THINKING_MODEL}"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+            )
+            ;;
+        anthropic)
+            json_content=$(cat << JSONEOF
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/${PRIMARY_MODEL}",
+        "fallbacks": [
+          "anthropic/${THINKING_MODEL}"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+            )
+            ;;
+        openai)
+            json_content=$(cat << JSONEOF
+{
+  "env": {
+    "OPENAI_API_KEY": "${NEWAPI_API_KEY}"
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai/${PRIMARY_MODEL}",
+        "fallbacks": [
+          "openai/${THINKING_MODEL}"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "allow": ["openclaw-weixin"]
+  }
+}
+JSONEOF
+            )
+            ;;
+        *)
+            # 自定义/其他供应商：使用 models.providers 显式配置（DeepSeek/硅基流动/Kimi 等）
+            json_content=$(cat << JSONEOF
 {
   "models": {
     "providers": {
       "${PROVIDER_NAME}": {
-        ${provider_props}
+        "baseUrl": "${NEWAPI_BASE_URL}",
+        "apiKey": "${NEWAPI_API_KEY}",
+        "api": "${API_FORMAT}",
         "models": [
           {
             "id": "${PRIMARY_MODEL}",
@@ -770,6 +841,11 @@ do_install() {
   }
 }
 JSONEOF
+            )
+            ;;
+    esac
+
+    echo "$json_content" > "$tmpdir/openclaw.json"
 
     # USER.md
     cat > "$tmpdir/USER.md" << USEREOF
