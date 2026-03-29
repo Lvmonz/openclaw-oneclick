@@ -1216,6 +1216,17 @@ SOULEOF
             fi
         fi
         print_info "微信需扫码授权（见下方说明）"
+
+        # 自动修补微信插件的 block streaming 行为：
+        # 官方插件默认 disableBlockStreaming: false，会导致流式回复被切成多条"累积式"消息，
+        # 看起来像是发了重复的内容。自动改为 true，让回复完整生成后再一次性发送。
+        local weixin_pm="/home/node/.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts"
+        if docker exec openclaw-main grep -q 'disableBlockStreaming: false' "$weixin_pm" 2>/dev/null; then
+            docker exec openclaw-main sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm"
+            print_success "已自动修补微信插件：禁用 block streaming 防止重复消息"
+        else
+            print_info "微信插件 block streaming 已为最优配置，无需修补"
+        fi
     else
         print_info "微信未配置，已跳过"
     fi
