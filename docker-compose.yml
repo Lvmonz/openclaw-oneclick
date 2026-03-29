@@ -3,8 +3,6 @@ services:
     image: ghcr.io/openclaw/openclaw:latest
     container_name: openclaw-main
     restart: unless-stopped
-    depends_on:
-      - openclaw-browser
     ports:
       - "18789:18789"
     volumes:
@@ -16,30 +14,7 @@ services:
     environment:
       - TZ=${TZ:-Asia/Shanghai}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-      - CHROME_CDP_URL=${CHROME_CDP_URL:-ws://openclaw-browser:9222}
-
-  openclaw-browser:
-    image: zenika/alpine-chrome:with-puppeteer
-    container_name: openclaw-browser
-    restart: unless-stopped
-    security_opt:
-      - seccomp:unconfined # 解决 Chrome 在部分沙箱受限的问题
-    command: [
-      "chromium-browser",
-      "--headless=new",
-      "--no-sandbox",
-      "--disable-dev-shm-usage", # 避免通过 /dev/shm 溢出内存
-      "--remote-debugging-port=9222",
-      "--remote-debugging-address=0.0.0.0",
-      "--user-data-dir=/home/chrome/user-data"
-    ]
-    shm_size: '2gb' # 强制扩大共享物理内存，防止浏览器突然崩溃，这对长期运行的网页至关重要
-    ports:
-      - "9222:9222" # 暴露给宿主机进行 debug 监控
-    volumes:
-      # 极其重要的持久化机制，锁住登录状态（Twitter/Discord/WeChat 等）
-      - browser_profile:/home/chrome/user-data
+      - CHROME_CDP_URL=${CHROME_CDP_URL:-}
 
 volumes:
   openclaw-data:
-  browser_profile:

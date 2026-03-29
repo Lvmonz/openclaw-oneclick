@@ -114,6 +114,63 @@ validate_url() {
     fi
 }
 
+# API 连通性预检
+precheck_api() {
+    local base_url=$1
+    local api_key=$2
+    local provider=$3
+
+    echo ""
+    echo -en "  ${DIM}正在验证 API 连通性..."
+
+    local http_code
+    if [ "$provider" = "anthropic" ]; then
+        # Anthropic 使用 x-api-key header
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "x-api-key: $api_key" \
+            -H "anthropic-version: 2023-06-01" \
+            "${base_url}/models" --max-time 10 2>/dev/null)
+    else
+        # OpenAI 兼容格式
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $api_key" \
+            "${base_url}/models" --max-time 10 2>/dev/null)
+    fi
+
+    if [ "$http_code" = "000" ]; then
+        echo -e "${NC}"
+        print_warn "无法连接到 ${base_url}，请检查网络"
+        print_info "安装将继续，但如果 API 配置有误，容器启动后对话会报错"
+        return 1
+    elif [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
+        echo -e "${NC}"
+        print_error "API Key 验证失败 (HTTP $http_code)，请检查 Key 是否正确"
+        if confirm "  仍然继续安装？" "N"; then
+            return 0
+        else
+            return 2
+        fi
+    elif [[ "$http_code" =~ ^2 ]]; then
+        echo -e " ✔${NC}"
+        print_success "API 连通性验证通过"
+        return 0
+    else
+        echo -e "${NC}"
+        print_warn "API 返回 HTTP $http_code，可能正常也可能有问题"
+        print_info "安装将继续"
+        return 0
+    fi
+}
+
+# 构造 docker compose 命令（根据是否启用浏览器动态选择 compose 文件）
+compose_cmd() {
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        docker compose -f docker-compose.yml -f docker-compose.browser.yml "$@"
+    else
+        docker compose "$@"
+    fi
+}
+
 # 捕获 Ctrl+C
 trap 'echo ""; echo ""; print_warn "安装已取消。你的配置已保存到 .env，下次运行 ./setup.sh 可继续。"; echo ""; exit 0' INT
 
@@ -633,12 +690,20 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
+    # Step 0: API 连通性预检
+    precheck_api "$NEWAPI_BASE_URL" "$NEWAPI_API_KEY" "$PROVIDER_NAME"
+    local precheck_result=$?
+    if [ $precheck_result -eq 2 ]; then
+        print_info "安装已取消，请修正 API Key 后重新运行 ./setup.sh"
+        exit 0
+    fi
+
     # Step 1: 准备配置文件（写到临时目录，稍后注入容器）
     echo ""
     echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
 
     # 停止旧容器并清理孤儿容器（架构大版本更新时必备）
-    docker compose down --remove-orphans 2>/dev/null || true
+    compose_cmd down --remove-orphans 2>/dev/null || true
 
     # 仅在 --clean 参数时销毁数据卷（否则保留插件/skills）
     if [ "${CLEAN_INSTALL:-}" = "yes" ]; then
@@ -662,16 +727,21 @@ do_install() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    local json_content=""
-    if [ "$PROVIDER_NAME" = "custom" ]; then
-        json_content=$(cat << JSONEOF
+    # 根据是否是内置 Provider 动态拼接 API 参数
+    local provider_props="\"apiKey\": \"${NEWAPI_API_KEY}\","
+    if [ -n "$API_FORMAT" ] && [ -n "$NEWAPI_BASE_URL" ]; then
+        provider_props="\"baseUrl\": \"${NEWAPI_BASE_URL}\",
+        \"apiKey\": \"${NEWAPI_API_KEY}\",
+        \"api\": \"${API_FORMAT}\","
+    fi
+
+    # openclaw.json
+    cat > "$tmpdir/openclaw.json" << JSONEOF
 {
   "models": {
     "providers": {
-      "custom": {
-        "baseUrl": "${NEWAPI_BASE_URL}",
-        "apiKey": "${NEWAPI_API_KEY}",
-        "api": "${API_FORMAT}",
+      "${PROVIDER_NAME}": {
+        ${provider_props}
         "models": [
           {
             "id": "${PRIMARY_MODEL}",
@@ -687,29 +757,6 @@ do_install() {
   },
   "agents": {
     "defaults": {
-      "model": "custom/${PRIMARY_MODEL}"
-    }
-  },
-  "plugins": {
-    "allow": ["openclaw-weixin"]
-  }
-}
-JSONEOF
-        )
-    else
-        # 官方原生支持的 Providers，必须挂载在 env 下才能触发原生优化引擎，而不是 models.providers 强制覆写模式
-        local env_key=""
-        if [ "$PROVIDER_NAME" = "anthropic" ]; then env_key="ANTHROPIC_API_KEY"; fi
-        if [ "$PROVIDER_NAME" = "openai" ]; then env_key="OPENAI_API_KEY"; fi
-        if [ "$PROVIDER_NAME" = "openrouter" ]; then env_key="OPENROUTER_API_KEY"; fi
-
-        json_content=$(cat << JSONEOF
-{
-  "env": {
-    "${env_key}": "${NEWAPI_API_KEY}"
-  },
-  "agents": {
-    "defaults": {
       "model": "${PROVIDER_NAME}/${PRIMARY_MODEL}"
     }
   },
@@ -718,10 +765,6 @@ JSONEOF
   }
 }
 JSONEOF
-        )
-    fi
-
-    echo "$json_content" > "$tmpdir/openclaw.json"
 
     # USER.md
     cat > "$tmpdir/USER.md" << USEREOF
@@ -804,7 +847,7 @@ SOULEOF
 
     echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
     echo -e "    ${DIM}以下是实时下载进度：${NC}"
-    if docker compose pull; then
+    if compose_cmd pull; then
         print_success "镜像已就绪"
     else
         echo -e " 失败${NC}"
@@ -817,7 +860,7 @@ SOULEOF
     echo ""
     echo -e "  ${BLUE}[3/7]${NC} 启动容器..."
     echo -en "    ${DIM}启动中..."
-    if docker compose up -d --remove-orphans 2>/dev/null; then
+    if compose_cmd up -d --remove-orphans 2>/dev/null; then
         echo -e " 完成${NC}"
     else
         echo ""
