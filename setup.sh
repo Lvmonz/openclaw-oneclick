@@ -420,19 +420,24 @@ step2() {
             esac
             ;;
         openrouter)
-            echo -e "  ${GREEN}1)${NC} anthropic/claude-sonnet-4 + anthropic/claude-opus-4 ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} openai/gpt-4o + openai/o3 ${DIM}（GPT 组合）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+            echo -e "  ${GREEN}1)${NC} deepseek/deepseek-chat-v3-0324 + deepseek/deepseek-r1 ${DIM}（推荐，免费额度可用）${NC}"
+            echo -e "  ${GREEN}2)${NC} anthropic/claude-sonnet-4 + anthropic/claude-opus-4 ${DIM}（需充值，效果最好）${NC}"
+            echo -e "  ${GREEN}3)${NC} openai/gpt-4o + openai/o3 ${DIM}（需充值）${NC}"
+            echo -e "  ${GREEN}4)${NC} 自定义模型名称"
+            echo ""
+            print_warn "注意：OpenRouter 免费额度账户无法使用 Anthropic/OpenAI/Google 模型"
+            print_info "如需使用 Claude/GPT，请先在 openrouter.ai 充值后选择对应项"
             echo ""
             echo -en "  选择 ${DIM}[1]${NC}: "
             read -r model_choice
             model_choice=${model_choice:-1}
             case $model_choice in
-                1) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
-                2) PRIMARY_MODEL="openai/gpt-4o"; THINKING_MODEL="openai/o3" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                1) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
+                2) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
+                3) PRIMARY_MODEL="openai/gpt-4o"; THINKING_MODEL="openai/o3" ;;
+                4) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
                    prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
+                *) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
             esac
             ;;
         kimi)
