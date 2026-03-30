@@ -1268,7 +1268,7 @@ MIRROR
         cat > docker-compose.mirror.yml <<-'MIRRORYML'
 services:
   openclaw-browser:
-    image: docker.m.daocloud.io/browserless/chrome:latest
+    image: docker.m.daocloud.io/browserless/chromium:latest
 MIRRORYML
         print_info "已生成镜像加速 override (docker-compose.mirror.yml)"
     fi

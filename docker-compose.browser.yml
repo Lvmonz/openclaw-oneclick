@@ -4,7 +4,7 @@ services:
       - openclaw-browser
 
   openclaw-browser:
-    image: browserless/chrome:latest
+    image: ghcr.io/browserless/chromium:latest
     container_name: openclaw-browser
     restart: unless-stopped
     security_opt:
