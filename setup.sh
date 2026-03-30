@@ -226,19 +226,32 @@ NEWAPI_API_KEY=""
 API_FORMAT="openai-completions"
 PRIMARY_MODEL=""
 THINKING_MODEL=""
-SETUP_WECHAT="no"
-SHARE_CHROME="no"
-BRAVE_API_KEY=""
+SETUP_WECHAT="yes"
+SHARE_CHROME="yes"
 USER_NAME=""
 USER_LANG="中文"
 TZ="Asia/Shanghai"
+HAS_EXISTING_CONFIG="no"
 
 if [ -f .env ]; then
     source .env 2>/dev/null
-    print_info "检测到已有配置，将作为默认值使用。"
-    echo ""
+    # 检测核心配置是否完整
+    if [ -n "$PROVIDER_NAME" ] && [ -n "$NEWAPI_API_KEY" ] && [ -n "$PRIMARY_MODEL" ]; then
+        HAS_EXISTING_CONFIG="yes"
+        print_success "检测到完整的已有配置"
+        echo -e "    供应商: ${BOLD}${PROVIDER_NAME}${NC}  模型: ${BOLD}${PRIMARY_MODEL}${NC}"
+        echo ""
+    else
+        print_info "检测到部分配置，将作为默认值使用。"
+        echo ""
+    fi
     sleep 1
 fi
+
+# 设置 step3 默认值（微信+浏览器必选，Skills 全选）
+SETUP_WECHAT="yes"
+SHARE_CHROME="yes"
+SELECTED_SKILLS=("summarize:📝 长文摘要 (summarize)" "openclaw-cost-tracker:💰 成本追踪 (openclaw-cost-tracker)")
 
 # ==================== Step 1: 模型供应商 ====================
 # 参考社区脚本: github.com/miaoxworld/OpenClawInstaller (setup_ai_provider)
@@ -1358,9 +1371,15 @@ for arg in "$@"; do
     esac
 done
 
-step1
-step2
-step3
-step4
-step5
+if [ "$HAS_EXISTING_CONFIG" = "yes" ]; then
+    # 已有完整配置 → 直接跳到确认页，用户可从确认页选择修改
+    step5
+else
+    # 首次安装 → 完整走向导
+    step1
+    step2
+    step3
+    step4
+    step5
+fi
 do_install
