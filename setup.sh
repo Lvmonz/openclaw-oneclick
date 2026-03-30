@@ -272,6 +272,38 @@ if ! docker info &>/dev/null 2>&1; then
 fi
 print_success "Docker 正在运行"
 
+# 询问是否使用国内镜像加速（仅 Linux）
+if [ "$(uname -s)" = "Linux" ]; then
+    echo ""
+    echo -e "  ${BOLD}🌏 Docker 镜像源选择${NC}"
+    echo -e "  ${GREEN}1)${NC} 标准源 (Docker Hub 官方)  ${DIM}— 海外服务器推荐${NC}"
+    echo -e "  ${GREEN}2)${NC} 国内镜像加速              ${DIM}— 国内服务器推荐（DaoCloud/网易/DockerHub.icu）${NC}"
+    echo ""
+    echo -en "  选择 ${DIM}[1]${NC}: "
+    read -r mirror_choice
+    mirror_choice=${mirror_choice:-1}
+
+    if [ "$mirror_choice" = "2" ]; then
+        echo -en "  ${DIM}正在配置国内镜像源..."
+        sudo mkdir -p /etc/docker 2>/dev/null
+        sudo tee /etc/docker/daemon.json > /dev/null <<-'MIRROR'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerhub.icu",
+    "https://hub-mirror.c.163.com"
+  ]
+}
+MIRROR
+        sudo systemctl daemon-reload 2>/dev/null && sudo systemctl restart docker 2>/dev/null
+        sleep 2
+        echo -e " ✔${NC}"
+        print_success "国内镜像已配置并生效"
+    else
+        print_info "使用标准 Docker Hub 源"
+    fi
+fi
+
 echo ""
 sleep 1
 
