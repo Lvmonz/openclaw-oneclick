@@ -19,6 +19,7 @@
 ```
 openclaw-oneclick/
 ├── setup.sh                    # 主交互式安装向导
+├── factory-reset.sh            # 一键洗脑 — 出厂重置脚本
 ├── .env.example                # 环境变量模板
 ├── docker-compose.yml          # 核心容器编排（大脑主容器）
 ├── docker-compose.browser.yml  # 浏览器 Sidecar 编排（按需加载）
@@ -113,6 +114,31 @@ docker compose pull && docker compose up -d
 # 查看核心日志
 docker logs openclaw-main --tail 100 -f
 ```
+
+### 🧹 一键洗脑 / 出厂重置
+
+当 AI 出现幻觉、串记忆、行为异常，或者你调整了 `SOUL.md` / `SKILL.md` 后想让 AI 以全新状态重新开始时，使用出厂重置脚本：
+
+```bash
+# 普通重置：清空对话记忆、日志、LLM 缓存，保留浏览器登录态
+bash factory-reset.sh
+
+# 硬重置：额外清除浏览器 Cookie（需重新扫码登录各网站）
+bash factory-reset.sh --hard
+```
+
+| 项目 | 普通重置 | 硬重置 (`--hard`) |
+|------|:--------:|:-----------------:|
+| 对话历史 | ✅ 清空 | ✅ 清空 |
+| Agent 记忆 | ✅ 清空 | ✅ 清空 |
+| LLM prompt cache | ✅ 清空 | ✅ 清空 |
+| 日志 | ✅ 清空 | ✅ 清空 |
+| 已安装的 Skills | ✅ **保留** | ✅ **保留** |
+| 配置文件 (SOUL/IDENTITY/USER.md) | ✅ **保留** | ✅ **保留** |
+| 微信账号绑定 | ✅ **保留** | ✅ **保留** |
+| 浏览器 Cookie 与登录态 | ✅ **保留** | ❌ 清空 |
+
+> 💡 **推荐**：日常调试用普通重置即可，无需每次都重新扫码。只有在浏览器状态异常（如网站检测到自动化、Cookie 过期）时再用 `--hard`。
 
 ### 彻底卸载
 
