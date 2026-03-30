@@ -596,69 +596,44 @@ step2() {
 
 step3() {
     print_header
-    print_step 3 "可选功能配置"
+    print_step 3 "功能与 Skills 配置"
 
-    # 微信
-    echo -e "  ${BOLD}📱 个人微信接入（官方 ClawBot 插件）${NC}"
-    print_info "通过微信 iOS 8.0.70+ 内置 ClawBot 插件接入，官方支持，安全不封号。"
-    print_info "前置条件：微信 → 设置 → 插件 中能看到 ClawBot 入口"
+    print_info "以下为默认安装组件和可选 Skills。空格键切换，a 全选/全不选，Enter 确认。"
     echo ""
 
-    if confirm "  是否配置微信？"; then
-        SETUP_WECHAT="yes"
-        print_success "将在安装阶段配置微信插件（需扫码授权）"
-    else
-        SETUP_WECHAT="no"
-        print_info "已跳过微信配置（后续可手动安装）"
-    fi
+    # 硬编码微信和浏览器为必选
+    SETUP_WECHAT="yes"
+    SHARE_CHROME="yes"
 
-    echo ""
-
-    # 浏览器功能 (Sidecar 架构)
-    echo -e "  ${BOLD}🌐 浏览器功能 (独立 Sidecar 架构)${NC}"
-    print_info "为提供极高稳定性和【持久化登录态】，将启动一个独立的 Chromium 容器。"
-    print_info "核心优势：即便删除重装 OpenClaw 大脑，你在推特/微信等网页的登录状态也会永久保留！"
-    echo ""
-    print_warn "⚠️ 警告：独立的浏览器容器需要额外分配资源（建议预留 2GB 内存以防网页崩溃）。"
-    echo ""
-
-    if confirm "  是否启用独立浏览器 (Sidecar) 功能？"; then
-        SHARE_CHROME="yes"
-        print_success "将在安装阶段编排独立的浏览器容器"
-    else
-        SHARE_CHROME="no"
-        print_info "已跳过浏览器功能"
-    fi
-
-    echo ""
-
-    # Skills 多选
-    echo -e "  ${BOLD}🧩 Skills 扩展能力（可选安装）${NC}"
-    print_info "以下 Skills 可增强 AI 能力。空格键切换选中，a 全选/全不选，Enter 确认。"
-    echo ""
-
-    # 定义可选 skills
+    # 可选 skills
     SKILL_IDS=("summarize" "openclaw-cost-tracker")
     SKILL_LABELS=("📝 长文摘要 (summarize)" "💰 成本追踪 (openclaw-cost-tracker)")
     SKILL_SELECTED=(1 1)  # 默认全选
 
-    local cursor=0
+    local num_locked=2
     local num_skills=${#SKILL_IDS[@]}
+    local total_items=$((num_locked + num_skills))
+    local cursor=$num_locked  # 光标从第一个可选项开始
 
-    # 渲染 checkbox 列表
-    render_skills_menu() {
-        # 移动光标到菜单起始位置
-        for ((i=0; i<num_skills+1; i++)); do
-            echo -en "\033[A"  # 上移一行
+    # 渲染列表
+    render_menu() {
+        # 移动光标回到菜单顶部
+        for ((i=0; i<total_items+1; i++)); do
+            echo -en "\033[A"
         done
-        echo -en "\r"  # 回到行首
+        echo -en "\r"
 
+        # 锁定项：微信
+        echo -e "  ${GREEN}[✔]${NC} 📱 个人微信 (openclaw-weixin)  ${DIM}🔒 默认${NC}                "
+        # 锁定项：浏览器
+        echo -e "  ${GREEN}[✔]${NC} 🌐 独立浏览器 (Sidecar Chrome)  ${DIM}🔒 默认${NC}                "
+
+        # 可选 skills
         for ((i=0; i<num_skills; i++)); do
+            local idx=$((num_locked + i))
             local prefix="  "
-            if [ $i -eq $cursor ]; then
+            if [ $idx -eq $cursor ]; then
                 prefix="${CYAN}▸ ${NC}"
-            else
-                prefix="  "
             fi
             if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
                 echo -e "${prefix}${GREEN}[✔]${NC} ${SKILL_LABELS[$i]}                    "
@@ -670,30 +645,33 @@ step3() {
     }
 
     # 初始渲染（先打空行占位）
-    for ((i=0; i<num_skills+1; i++)); do echo ""; done
-    render_skills_menu
+    for ((i=0; i<total_items+1; i++)); do echo ""; done
+    render_menu
 
     # 读取按键
     while true; do
         IFS= read -rsn1 key
         case "$key" in
-            $'\x1b')  # 方向键前缀
+            $'\x1b')  # 方向键
                 read -rsn2 arrow
                 case "$arrow" in
-                    '[A') ((cursor > 0)) && ((cursor--)) ;;  # 上
-                    '[B') ((cursor < num_skills-1)) && ((cursor++)) ;;  # 下
+                    '[A') ((cursor > num_locked)) && ((cursor--)) ;;  # 上（不能进入锁定区）
+                    '[B') ((cursor < total_items-1)) && ((cursor++)) ;;  # 下
                 esac
-                render_skills_menu
+                render_menu
                 ;;
-            ' ')  # 空格：切换当前项
-                if [ ${SKILL_SELECTED[$cursor]} -eq 1 ]; then
-                    SKILL_SELECTED[$cursor]=0
-                else
-                    SKILL_SELECTED[$cursor]=1
+            ' ')  # 空格：切换当前可选项
+                local si=$((cursor - num_locked))
+                if [ $si -ge 0 ] && [ $si -lt $num_skills ]; then
+                    if [ ${SKILL_SELECTED[$si]} -eq 1 ]; then
+                        SKILL_SELECTED[$si]=0
+                    else
+                        SKILL_SELECTED[$si]=1
+                    fi
                 fi
-                render_skills_menu
+                render_menu
                 ;;
-            'a'|'A')  # 全选/全不选
+            'a'|'A')  # 全选/全不选（仅影响可选 skills）
                 local all_on=1
                 for ((i=0; i<num_skills; i++)); do
                     [ ${SKILL_SELECTED[$i]} -eq 0 ] && all_on=0
@@ -703,7 +681,7 @@ step3() {
                 for ((i=0; i<num_skills; i++)); do
                     SKILL_SELECTED[$i]=$new_val
                 done
-                render_skills_menu
+                render_menu
                 ;;
             '')  # Enter：确认
                 break
@@ -719,11 +697,8 @@ step3() {
         fi
     done
 
-    if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
-        print_success "已选择 ${#SELECTED_SKILLS[@]} 个 Skills"
-    else
-        print_info "未选择任何额外 Skills（可后续手动安装）"
-    fi
+    local total_selected=$((2 + ${#SELECTED_SKILLS[@]}))
+    print_success "已选择 ${total_selected} 项（含 2 项默认组件）"
 
     echo ""
     echo -e "  ${DIM}按 Enter 继续，输入 b 返回上一步${NC}"
