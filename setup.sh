@@ -632,34 +632,97 @@ step3() {
 
     echo ""
 
-    # Brave Search
-    echo -e "  ${BOLD}🔍 联网搜索（Brave Search API）${NC}"
-    print_info "让 AI 像用 Google 一样搜索互联网，获取实时信息。"
-    echo ""
-    echo -e "  ${DIM}为什么推荐 Brave Search？${NC}"
-    echo -e "    • 免费额度 2000 次/月，个人使用足够"
-    echo -e "    • 隐私友好，不追踪用户"
-    echo -e "    • OpenClaw 官方内置支持，配置简单"
-    echo ""
-    echo -e "  ${DIM}不配置会怎样？${NC}"
-    echo -e "    • AI 无法主动搜索关键词（如「今天 BTC 价格」）"
-    echo -e "    • 但仍可通过 web-browser Skill 访问指定网页（已自动安装）"
-    echo -e "    • 你给 AI 一个链接，它可以直接读取内容"
-    echo ""
-    echo -e "  ${DIM}获取方式：https://brave.com/search/api/ → 注册 → Free 计划${NC}"
+    # Skills 多选
+    echo -e "  ${BOLD}🧩 Skills 扩展能力（可选安装）${NC}"
+    print_info "以下 Skills 可增强 AI 能力。空格键切换选中，a 全选/全不选，Enter 确认。"
     echo ""
 
-    if confirm "  是否配置搜索？" "N"; then
-        echo ""
-        prompt_secret "Brave Search API Key (BSA_开头)" "$BRAVE_API_KEY" BRAVE_API_KEY
-        if [ -n "$BRAVE_API_KEY" ]; then
-            print_success "搜索 Key 已记录"
-        else
-            print_info "已跳过搜索配置"
+    # 定义可选 skills
+    SKILL_IDS=("summarize" "openclaw-cost-tracker")
+    SKILL_LABELS=("📝 长文摘要 (summarize)" "💰 成本追踪 (openclaw-cost-tracker)")
+    SKILL_SELECTED=(1 1)  # 默认全选
+
+    local cursor=0
+    local num_skills=${#SKILL_IDS[@]}
+
+    # 渲染 checkbox 列表
+    render_skills_menu() {
+        # 移动光标到菜单起始位置
+        for ((i=0; i<num_skills+1; i++)); do
+            echo -en "\033[A"  # 上移一行
+        done
+        echo -en "\r"  # 回到行首
+
+        for ((i=0; i<num_skills; i++)); do
+            local prefix="  "
+            if [ $i -eq $cursor ]; then
+                prefix="${CYAN}▸ ${NC}"
+            else
+                prefix="  "
+            fi
+            if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
+                echo -e "${prefix}${GREEN}[✔]${NC} ${SKILL_LABELS[$i]}                    "
+            else
+                echo -e "${prefix}${DIM}[ ]${NC} ${SKILL_LABELS[$i]}                    "
+            fi
+        done
+        echo -e "  ${DIM}↑↓ 移动 | 空格 切换 | a 全选/全不选 | Enter 确认${NC}     "
+    }
+
+    # 初始渲染（先打空行占位）
+    for ((i=0; i<num_skills+1; i++)); do echo ""; done
+    render_skills_menu
+
+    # 读取按键
+    while true; do
+        IFS= read -rsn1 key
+        case "$key" in
+            $'\x1b')  # 方向键前缀
+                read -rsn2 arrow
+                case "$arrow" in
+                    '[A') ((cursor > 0)) && ((cursor--)) ;;  # 上
+                    '[B') ((cursor < num_skills-1)) && ((cursor++)) ;;  # 下
+                esac
+                render_skills_menu
+                ;;
+            ' ')  # 空格：切换当前项
+                if [ ${SKILL_SELECTED[$cursor]} -eq 1 ]; then
+                    SKILL_SELECTED[$cursor]=0
+                else
+                    SKILL_SELECTED[$cursor]=1
+                fi
+                render_skills_menu
+                ;;
+            'a'|'A')  # 全选/全不选
+                local all_on=1
+                for ((i=0; i<num_skills; i++)); do
+                    [ ${SKILL_SELECTED[$i]} -eq 0 ] && all_on=0
+                done
+                local new_val=1
+                [ $all_on -eq 1 ] && new_val=0
+                for ((i=0; i<num_skills; i++)); do
+                    SKILL_SELECTED[$i]=$new_val
+                done
+                render_skills_menu
+                ;;
+            '')  # Enter：确认
+                break
+                ;;
+        esac
+    done
+
+    # 收集选中的 skills
+    SELECTED_SKILLS=()
+    for ((i=0; i<num_skills; i++)); do
+        if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
+            SELECTED_SKILLS+=("${SKILL_IDS[$i]}:${SKILL_LABELS[$i]}")
         fi
+    done
+
+    if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
+        print_success "已选择 ${#SELECTED_SKILLS[@]} 个 Skills"
     else
-        BRAVE_API_KEY=""
-        print_info "已跳过（web-browser Skill 仍可访问网页，后续可在 .env 中添加）"
+        print_info "未选择任何额外 Skills（可后续手动安装）"
     fi
 
     echo ""
@@ -720,10 +783,19 @@ step5() {
     else
         echo -e "    微信:      ${DIM}未配置${NC}"
     fi
-    if [ -n "$BRAVE_API_KEY" ]; then
-        echo -e "    搜索:      ${GREEN}✔ 已配置${NC}"
+    if [ "$SHARE_CHROME" = "yes" ]; then
+        echo -e "    浏览器:    ${GREEN}✔ Sidecar 独立容器${NC}"
     else
-        echo -e "    搜索:      ${DIM}未配置${NC}"
+        echo -e "    浏览器:    ${DIM}未配置${NC}"
+    fi
+    echo -e "  ${CYAN}Skills${NC}"
+    if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
+        for item in "${SELECTED_SKILLS[@]}"; do
+            local sdesc="${item##*:}"
+            echo -e "    ${GREEN}✔${NC} ${sdesc}"
+        done
+    else
+        echo -e "    ${DIM}无额外 Skills${NC}"
     fi
     echo ""
     echo -e "  ${CYAN}用户信息${NC}"
@@ -777,7 +849,6 @@ PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
 SHARE_CHROME=$SHARE_CHROME
-BRAVE_API_KEY=$BRAVE_API_KEY
 TZ=$TZ
 OPENCLAW_GATEWAY_TOKEN=$OPENCLAW_GATEWAY_TOKEN
 
@@ -1184,16 +1255,24 @@ SOULEOF
 
     # Step 4: Skills
     echo ""
-    echo -e "  ${BLUE}[4/7]${NC} 安装核心 Skills..."
+    echo -e "  ${BLUE}[4/7]${NC} 安装 Skills..."
     print_info "网页浏览和文件读写为内置功能，无需安装"
-    local skills=("brave-search:联网搜索" "summarize:长文摘要" "openclaw-cost-tracker:成本追踪")
-    for item in "${skills[@]}"; do
-        local skill_name="${item%%:*}"
-        local skill_desc="${item##*:}"
-        docker exec openclaw-main openclaw skills install "$skill_name" --force 2>/dev/null && \
-            print_success "$skill_desc ($skill_name)" || \
-            print_warn "$skill_desc ($skill_name) 安装跳过"
-    done
+    if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
+        for item in "${SELECTED_SKILLS[@]}"; do
+            local skill_name="${item%%:*}"
+            local skill_desc="${item##*:}"
+            echo -en "    ${DIM}正在安装 ${skill_name}..."
+            if docker exec openclaw-main openclaw skills install "$skill_name" --force >/dev/null 2>&1; then
+                echo -e "${NC}"
+                print_success "${skill_desc}"
+            else
+                echo -e "${NC}"
+                print_warn "${skill_desc} 安装跳过"
+            fi
+        done
+    else
+        print_info "未选择额外 Skills，跳过"
+    fi
     print_success "文件读写（内置 File System）"
 
 
