@@ -1264,14 +1264,15 @@ MIRROR
     # 拉取镜像（带重试）
     local pull_ok=0
     for attempt in 1 2 3; do
-        echo -en "    ${DIM}尝试拉取 (第 ${attempt}/3 次)..."
-        if compose_cmd pull 2>&1 | tail -1; then
+        echo -e "    ${DIM}拉取中 (第 ${attempt}/3 次)...${NC}"
+        echo ""
+        if compose_cmd pull; then
             pull_ok=1
             break
         fi
-        echo -e "${NC}"
         if [ $attempt -lt 3 ]; then
-            print_warn "拉取超时，${attempt} 秒后重试..."
+            echo ""
+            print_warn "拉取失败，${attempt} 秒后重试..."
             sleep $attempt
         fi
     done
