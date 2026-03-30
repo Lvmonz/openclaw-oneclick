@@ -165,13 +165,16 @@ precheck_api() {
     fi
 }
 
-# 构造 docker compose 命令（根据是否启用浏览器动态选择 compose 文件）
+# 构造 docker compose 命令（根据是否启用浏览器/镜像动态选择 compose 文件）
 compose_cmd() {
+    local files="-f docker-compose.yml"
     if [ "$SHARE_CHROME" = "yes" ]; then
-        docker compose -f docker-compose.yml -f docker-compose.browser.yml "$@"
-    else
-        docker compose "$@"
+        files="$files -f docker-compose.browser.yml"
     fi
+    if [ -f docker-compose.mirror.yml ]; then
+        files="$files -f docker-compose.mirror.yml"
+    fi
+    docker compose $files "$@"
 }
 
 # 捕获 Ctrl+C
@@ -1242,7 +1245,7 @@ SOULEOF
     echo ""
     echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
 
-    # 如果用户选择了国内镜像，先配置 daemon.json
+    # 如果用户选择了国内镜像，配置 daemon.json + 生成镜像前缀 override
     if [ "$USE_MIRROR" = "yes" ] && [ "$(uname -s)" = "Linux" ]; then
         echo -en "    ${DIM}正在配置国内镜像源..."
         sudo mkdir -p /etc/docker 2>/dev/null
@@ -1259,6 +1262,15 @@ MIRROR
         sleep 2
         echo -e " ✔${NC}"
         print_success "国内镜像已配置并生效"
+
+        # 生成临时 compose override：将 Docker Hub 镜像替换为 DaoCloud 镜像前缀
+        # registry-mirrors 对部分镜像不生效时，直接指定镜像源最可靠
+        cat > docker-compose.mirror.yml <<-'MIRRORYML'
+services:
+  openclaw-browser:
+    image: docker.m.daocloud.io/browserless/chrome:latest
+MIRRORYML
+        print_info "已生成镜像加速 override (docker-compose.mirror.yml)"
     fi
 
     # 拉取镜像（带重试）
