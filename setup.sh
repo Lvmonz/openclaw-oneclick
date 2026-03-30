@@ -272,38 +272,6 @@ if ! docker info &>/dev/null 2>&1; then
 fi
 print_success "Docker 正在运行"
 
-# 询问是否使用国内镜像加速（仅 Linux）
-if [ "$(uname -s)" = "Linux" ]; then
-    echo ""
-    echo -e "  ${BOLD}🌏 Docker 镜像源选择${NC}"
-    echo -e "  ${GREEN}1)${NC} 标准源 (Docker Hub 官方)  ${DIM}— 海外服务器推荐${NC}"
-    echo -e "  ${GREEN}2)${NC} 国内镜像加速              ${DIM}— 国内服务器推荐（DaoCloud/网易/DockerHub.icu）${NC}"
-    echo ""
-    echo -en "  选择 ${DIM}[1]${NC}: "
-    read -r mirror_choice
-    mirror_choice=${mirror_choice:-1}
-
-    if [ "$mirror_choice" = "2" ]; then
-        echo -en "  ${DIM}正在配置国内镜像源..."
-        sudo mkdir -p /etc/docker 2>/dev/null
-        sudo tee /etc/docker/daemon.json > /dev/null <<-'MIRROR'
-{
-  "registry-mirrors": [
-    "https://docker.m.daocloud.io",
-    "https://dockerhub.icu",
-    "https://hub-mirror.c.163.com"
-  ]
-}
-MIRROR
-        sudo systemctl daemon-reload 2>/dev/null && sudo systemctl restart docker 2>/dev/null
-        sleep 2
-        echo -e " ✔${NC}"
-        print_success "国内镜像已配置并生效"
-    else
-        print_info "使用标准 Docker Hub 源"
-    fi
-fi
-
 echo ""
 sleep 1
 
@@ -320,6 +288,7 @@ SHARE_CHROME="yes"
 USER_NAME=""
 USER_LANG="中文"
 TZ="Asia/Shanghai"
+USE_MIRROR="no"
 HAS_EXISTING_CONFIG="no"
 
 if [ -f .env ]; then
@@ -337,10 +306,13 @@ if [ -f .env ]; then
     sleep 1
 fi
 
-# 设置 step3 默认值（微信+浏览器必选，Skills 全选）
+# 设置 step3 默认值（微信+浏览器必选，Skills 全选，Linux 默认开镜像）
 SETUP_WECHAT="yes"
 SHARE_CHROME="yes"
 SELECTED_SKILLS=("summarize:📝 长文摘要 (summarize)" "openclaw-cost-tracker:💰 成本追踪 (openclaw-cost-tracker)")
+if [ "$(uname -s)" = "Linux" ]; then
+    USE_MIRROR="yes"
+fi
 
 # ==================== Step 1: 模型供应商 ====================
 # 参考社区脚本: github.com/miaoxworld/OpenClawInstaller (setup_ai_provider)
@@ -707,10 +679,18 @@ step3() {
     SETUP_WECHAT="yes"
     SHARE_CHROME="yes"
 
-    # 可选 skills
-    SKILL_IDS=("summarize" "openclaw-cost-tracker")
-    SKILL_LABELS=("📝 长文摘要 (summarize)" "💰 成本追踪 (openclaw-cost-tracker)")
-    SKILL_SELECTED=(1 1)  # 默认全选
+    # 可选 skills + 镜像
+    SKILL_IDS=("summarize" "openclaw-cost-tracker" "docker-mirror")
+    SKILL_LABELS=("📝 长文摘要 (summarize)" "💰 成本追踪 (openclaw-cost-tracker)" "🌏 国内 Docker 镜像加速 (DaoCloud/网易)")
+    # Linux 默认开启镜像，macOS 默认关闭
+    local mirror_default=0
+    if [ "$(uname -s)" = "Linux" ]; then
+        mirror_default=1
+    fi
+    if [ "$USE_MIRROR" = "yes" ]; then
+        mirror_default=1
+    fi
+    SKILL_SELECTED=(1 1 $mirror_default)
 
     local num_locked=2
     local num_skills=${#SKILL_IDS[@]}
@@ -791,15 +771,23 @@ step3() {
         esac
     done
 
-    # 收集选中的 skills
+    # 收集选中的 skills（排除镜像项）
     SELECTED_SKILLS=()
+    USE_MIRROR="no"
     for ((i=0; i<num_skills; i++)); do
         if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
-            SELECTED_SKILLS+=("${SKILL_IDS[$i]}:${SKILL_LABELS[$i]}")
+            if [ "${SKILL_IDS[$i]}" = "docker-mirror" ]; then
+                USE_MIRROR="yes"
+            else
+                SELECTED_SKILLS+=("${SKILL_IDS[$i]}:${SKILL_LABELS[$i]}")
+            fi
         fi
     done
 
     local total_selected=$((2 + ${#SELECTED_SKILLS[@]}))
+    if [ "$USE_MIRROR" = "yes" ]; then
+        ((total_selected++))
+    fi
     print_success "已选择 ${total_selected} 项（含 2 项默认组件）"
 
     echo ""
@@ -865,6 +853,11 @@ step5() {
     else
         echo -e "    浏览器:    ${DIM}未配置${NC}"
     fi
+    if [ "$USE_MIRROR" = "yes" ]; then
+        echo -e "    镜像源:    ${GREEN}✔ 国内加速${NC}"
+    else
+        echo -e "    镜像源:    ${DIM}标准 Docker Hub${NC}"
+    fi
     echo -e "  ${CYAN}Skills${NC}"
     if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
         for item in "${SELECTED_SKILLS[@]}"; do
@@ -926,6 +919,7 @@ PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
 SHARE_CHROME=$SHARE_CHROME
+USE_MIRROR=$USE_MIRROR
 TZ=$TZ
 OPENCLAW_GATEWAY_TOKEN=$OPENCLAW_GATEWAY_TOKEN
 
@@ -1247,7 +1241,27 @@ SOULEOF
 
     echo ""
     echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
-    # 拉取镜像（带重试和镜像回退）
+
+    # 如果用户选择了国内镜像，先配置 daemon.json
+    if [ "$USE_MIRROR" = "yes" ] && [ "$(uname -s)" = "Linux" ]; then
+        echo -en "    ${DIM}正在配置国内镜像源..."
+        sudo mkdir -p /etc/docker 2>/dev/null
+        sudo tee /etc/docker/daemon.json > /dev/null <<-'MIRROR'
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://dockerhub.icu",
+    "https://hub-mirror.c.163.com"
+  ]
+}
+MIRROR
+        sudo systemctl daemon-reload 2>/dev/null && sudo systemctl restart docker 2>/dev/null
+        sleep 2
+        echo -e " ✔${NC}"
+        print_success "国内镜像已配置并生效"
+    fi
+
+    # 拉取镜像（带重试）
     local pull_ok=0
     for attempt in 1 2 3; do
         echo -en "    ${DIM}尝试拉取 (第 ${attempt}/3 次)..."
