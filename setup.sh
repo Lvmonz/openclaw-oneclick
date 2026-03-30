@@ -183,35 +183,92 @@ print_header
 echo -e "  ${BOLD}正在检查环境...${NC}"
 echo ""
 
-# 检查 Docker
+# 检查 Docker，Linux 上自动安装
 if ! command -v docker &>/dev/null; then
-    print_error "未检测到 Docker"
+    print_warn "未检测到 Docker"
     echo ""
-    echo -e "  请先安装 Docker Desktop："
-    echo -e "  ${CYAN}https://docker.com/get-started${NC}"
-    echo ""
-    echo -e "  macOS: 下载 .dmg → 拖入 Applications → 启动"
-    echo -e "  Windows: 下载 .exe → 勾选 WSL 2 → 安装重启"
-    echo -e "  Linux: curl -fsSL https://get.docker.com | sh"
-    echo ""
-    exit 1
+
+    # 检测操作系统
+    _os_type=""
+    case "$(uname -s)" in
+        Linux*)  _os_type="linux" ;;
+        Darwin*) _os_type="mac" ;;
+        *)       _os_type="other" ;;
+    esac
+
+    if [ "$_os_type" = "linux" ]; then
+        echo -e "  ${BOLD}检测到 Linux 系统，正在自动安装 Docker...${NC}"
+        echo ""
+        if curl -fsSL https://get.docker.com | sh; then
+            # 将当前用户加入 docker 组（避免需要 sudo）
+            sudo usermod -aG docker "$USER" 2>/dev/null || true
+            # 启动 Docker 服务
+            sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+            sudo systemctl enable docker 2>/dev/null || true
+            print_success "Docker 已自动安装并启动"
+            echo ""
+            print_warn "如果后续出现权限问题，请重新登录终端或执行：newgrp docker"
+            echo ""
+        else
+            print_error "Docker 自动安装失败"
+            print_info "请手动安装：curl -fsSL https://get.docker.com | sh"
+            exit 1
+        fi
+    else
+        print_error "请先安装 Docker Desktop"
+        echo ""
+        echo -e "  macOS: ${CYAN}https://docker.com/get-started${NC} → 下载 .dmg → 拖入 Applications → 启动"
+        echo -e "  Windows: ${CYAN}https://docker.com/get-started${NC} → 下载 .exe → 勾选 WSL 2 → 安装重启"
+        echo ""
+        exit 1
+    fi
 fi
 print_success "Docker $(docker --version 2>/dev/null | sed 's/.*version //' | sed 's/,.*//')"
 
 # 检查 Docker Compose
 if ! docker compose version &>/dev/null; then
-    print_error "未检测到 Docker Compose V2"
-    echo ""
-    echo -e "  请更新 Docker Desktop 到最新版本"
-    echo ""
-    exit 1
+    print_warn "未检测到 Docker Compose V2"
+    # Linux 上尝试自动安装 compose 插件
+    if [ "$(uname -s)" = "Linux" ]; then
+        echo -en "  ${DIM}正在安装 Docker Compose 插件..."
+        sudo mkdir -p /usr/local/lib/docker/cli-plugins 2>/dev/null
+        _compose_url="https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
+        if sudo curl -fsSL "$_compose_url" -o /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null; then
+            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            echo -e " ✔${NC}"
+            print_success "Docker Compose 已自动安装"
+        else
+            echo -e " 失败${NC}"
+            print_error "Compose 安装失败，请手动安装"
+            exit 1
+        fi
+    else
+        echo -e "  请更新 Docker Desktop 到最新版本"
+        exit 1
+    fi
 fi
 print_success "Docker Compose $(docker compose version 2>/dev/null | sed 's/.*v//')"
 
 # 检查 Docker 是否在运行
-if ! docker info &>/dev/null; then
-    print_error "Docker 未在运行，请先启动 Docker Desktop"
-    exit 1
+if ! docker info &>/dev/null 2>&1; then
+    print_warn "Docker 未在运行"
+    # Linux 上尝试自动启动
+    if [ "$(uname -s)" = "Linux" ]; then
+        echo -en "  ${DIM}正在启动 Docker..."
+        sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+        sleep 3
+        if docker info &>/dev/null 2>&1; then
+            echo -e " ✔${NC}"
+            print_success "Docker 已自动启动"
+        else
+            echo -e " 失败${NC}"
+            print_error "Docker 启动失败，请手动运行：sudo systemctl start docker"
+            exit 1
+        fi
+    else
+        print_error "请先启动 Docker Desktop"
+        exit 1
+    fi
 fi
 print_success "Docker 正在运行"
 
@@ -1156,14 +1213,46 @@ ${chrome_section}
 SOULEOF
     print_success "配置文件已准备"
 
+    echo ""
     echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
-    echo -e "    ${DIM}以下是实时下载进度：${NC}"
-    if compose_cmd pull; then
+    # 拉取镜像（带重试和镜像回退）
+    local pull_ok=0
+    for attempt in 1 2 3; do
+        echo -en "    ${DIM}尝试拉取 (第 ${attempt}/3 次)..."
+        if compose_cmd pull 2>&1 | tail -1; then
+            pull_ok=1
+            break
+        fi
+        echo -e "${NC}"
+        if [ $attempt -lt 3 ]; then
+            print_warn "拉取超时，${attempt} 秒后重试..."
+            sleep $attempt
+        fi
+    done
+
+    if [ $pull_ok -eq 1 ]; then
         print_success "镜像已就绪"
     else
-        echo -e " 失败${NC}"
-        print_error "镜像拉取失败，请检查网络连接"
-        print_info "手动重试：docker compose pull"
+        echo ""
+        print_error "镜像拉取失败（Docker Hub 网络超时）"
+        echo ""
+        print_info "━━ 解决方案：配置国内镜像源 ━━"
+        echo ""
+        echo -e "  在你的服务器上执行以下命令配置镜像加速："
+        echo ""
+        echo -e "  ${CYAN}sudo mkdir -p /etc/docker${NC}"
+        echo -e "  ${CYAN}sudo tee /etc/docker/daemon.json <<-'MIRROR'${NC}"
+        echo -e "  ${CYAN}{${NC}"
+        echo -e "  ${CYAN}  \"registry-mirrors\": [${NC}"
+        echo -e "  ${CYAN}    \"https://docker.m.daocloud.io\",${NC}"
+        echo -e "  ${CYAN}    \"https://dockerhub.icu\",${NC}"
+        echo -e "  ${CYAN}    \"https://hub-mirror.c.163.com\"${NC}"
+        echo -e "  ${CYAN}  ]${NC}"
+        echo -e "  ${CYAN}}${NC}"
+        echo -e "  ${CYAN}MIRROR${NC}"
+        echo -e "  ${CYAN}sudo systemctl daemon-reload && sudo systemctl restart docker${NC}"
+        echo ""
+        print_info "配置完成后重新运行 ./setup.sh"
         exit 1
     fi
 
