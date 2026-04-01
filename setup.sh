@@ -2000,7 +2000,8 @@ p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 cfg.setdefault('channels', {})['dingtalk'] = {
     'appKey': '${DINGTALK_APP_KEY}',
-    'appSecret': '${DINGTALK_APP_SECRET}'
+    'appSecret': '${DINGTALK_APP_SECRET}',
+    'dmPolicy': 'open'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
             print_success "钉钉配置已注入"
@@ -2018,7 +2019,8 @@ p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 cfg.setdefault('channels', {})['telegram'] = {
     'botToken': '${TELEGRAM_BOT_TOKEN}',
-    'chatId': '${TELEGRAM_CHAT_ID}'
+    'chatId': '${TELEGRAM_CHAT_ID}',
+    'dmPolicy': 'open'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
         echo -e " ${NC}"
@@ -2040,7 +2042,8 @@ p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 cfg.setdefault('channels', {})['feishu'] = {
     'appId': '${FEISHU_APP_ID}',
-    'appSecret': '${FEISHU_APP_SECRET}'
+    'appSecret': '${FEISHU_APP_SECRET}',
+    'dmPolicy': 'open'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
             print_success "飞书配置已注入"
