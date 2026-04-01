@@ -182,12 +182,12 @@ if [ "$INSTALL_MODE" = "full" ]; then
     echo -e "  ${DIM}────────────────────────────────${NC}"
 
     check_port() {
-port=$1; name=$2
+        local port=$1; local name=$2
         if lsof -i :"$port" &>/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":$port "; then
-pid=""
+            local pid=""
             pid=$(lsof -ti :"$port" 2>/dev/null | head -1)
             if [ -n "$pid" ]; then
-pname=""
+                local pname=""
                 pname=$(ps -p "$pid" -o comm= 2>/dev/null)
                 if echo "$pname" | grep -qi docker; then
                     print_success "端口 $port ($name) — Docker 占用 ✓"
@@ -240,10 +240,10 @@ else
     echo -e "  ${DIM}────────────────────────────────${NC}"
 
     if command -v node &>/dev/null; then
-node_ver=""
+        node_ver=""
         node_ver=$(node --version)
         print_success "Node.js $node_ver"
-major=""
+        major=""
         major=$(echo "$node_ver" | sed 's/v//' | cut -d. -f1)
         if [ "$major" -lt 22 ]; then
             record_issue
@@ -386,6 +386,10 @@ default_name="openclaw_diag_$(date +%Y%m%d_%H%M%S).log"
             echo "--- OpenClaw 容器环境核心日志 (Top 300) ---"
             docker logs openclaw-main --tail 300 2>/dev/null || echo "无法获取"
             echo ""
+            echo "--- OpenClaw 对话与 API 请求实时日志 (Top 200) ---"
+            echo "[ /tmp/openclaw/openclaw-*.log (容器内运行时日志) ]"
+            docker exec openclaw-main sh -c 'cat /tmp/openclaw/openclaw-*.log 2>/dev/null | tail -n 200' 2>/dev/null || echo "  (空)"
+            echo ""
             echo "--- OpenClaw 业务流与对话审计追踪 ---"
             echo "[ gateway.err.log ]"
             docker exec openclaw-main tail -n 200 /home/node/.openclaw/logs/gateway.err.log 2>/dev/null || echo "  (空)"
@@ -400,6 +404,10 @@ default_name="openclaw_diag_$(date +%Y%m%d_%H%M%S).log"
             echo ""
             echo "--- OpenClaw Lite 进程日志 ---"
             openclaw gateway status 2>/dev/null || echo "Gateway 未启动"
+            echo ""
+            echo "--- OpenClaw 对话与 API 请求实时日志 (Top 200) ---"
+            echo "[ /tmp/openclaw/openclaw-*.log (本地运行时日志) ]"
+            cat /tmp/openclaw/openclaw-*.log 2>/dev/null | tail -n 200 || echo "  (空)"
             echo ""
             echo "--- OpenClaw 业务流与对话审计追踪 ---"
             echo "[ gateway.err.log ]"
