@@ -1447,11 +1447,17 @@ do_install() {
     echo ""
     echo -e "  ${BLUE}[1/7]${NC} 准备配置文件..."
 
-    echo -en "    ${DIM}正在清理旧的容器环境 (Docker 引擎大约需要 5-10 秒释放资源)...${NC}"
-    # 瞬间强杀旧容器，避免由于大模型死锁导致 docker compose down 傻等 10 秒超时
-    compose_cmd kill 2>/dev/null || true
-    compose_cmd down --remove-orphans -t 1 2>/dev/null || true
-    echo -e " ✔${NC}"
+    if [ "$INSTALL_MODE" = "full" ]; then
+        echo -en "    ${DIM}正在清理旧的容器环境 (Docker 引擎大约需要 5-10 秒释放资源)...${NC}"
+        # 瞬间强杀旧容器，避免由于大模型死锁导致 docker compose down 傻等 10 秒超时
+        compose_cmd kill 2>/dev/null || true
+        compose_cmd down --remove-orphans -t 1 2>/dev/null || true
+        echo -e " ✔${NC}"
+    else
+        echo -en "    ${DIM}正在清理旧的本地服务...${NC}"
+        openclaw gateway stop >/dev/null 2>&1 || true
+        echo -e " ✔${NC}"
+    fi
 
     # 仅在 --clean 参数时销毁数据卷（否则保留插件/skills）
     if [ "${CLEAN_INSTALL:-}" = "yes" ]; then
@@ -1723,22 +1729,7 @@ SOULEOF
 
     if [ "$INSTALL_MODE" = "lite" ]; then
         echo ""
-        echo -e "  ${BLUE}[2/3]${NC} 应用本地配置文件..."
-        echo -en "    ${DIM}同步配置到本机 ~/.openclaw...${NC}"
-        mkdir -p ~/.openclaw/workspace/skills ~/.openclaw/extensions 2>/dev/null
-        cp "$tmpdir/openclaw.json" ~/.openclaw/openclaw.json 2>/dev/null
-        for f in "$tmpdir"/*.md; do
-            [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
-        done
-        if ls templates/skills/*.md 1>/dev/null 2>&1; then
-            for f in templates/skills/*.md; do
-                [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/skills/"$(basename "$f")" 2>/dev/null
-            done
-        fi
-        echo -e " ✔${NC}"
-
-        echo ""
-        echo -e "  ${BLUE}[3/3]${NC} 初始化本地环境 (简易版)..."
+        echo -e "  ${BLUE}[2/7]${NC} 安装 OpenClaw CLI (全局环境)..."
         echo -en "    ${DIM}正在全局安装 openclaw CLI (初次较慢，请稍候)...${NC}" > /dev/tty
         
         # 将安装置于后台，实现炫酷的旋转进度条
@@ -1753,11 +1744,8 @@ SOULEOF
             printf "\r    ${DIM}正在全局安装 openclaw CLI %s (依赖网络)...${NC}     " "$s_char" > /dev/tty
             sleep 0.15
         done
-        
         wait $npm_pid
         local npm_exit=$?
-        
-        # 清除加载进度行
         printf "\r%-80s\r" "" > /dev/tty
         
         if [ $npm_exit -eq 0 ]; then
@@ -1769,8 +1757,217 @@ SOULEOF
             exit 1
         fi
         
-        # 简易版不处理 Skills 插件与 Docker 通道通讯等复杂功能，作为开箱即用入口即可
+        echo ""
+        echo -e "  ${BLUE}[3/7]${NC} 初始化系统服务 (Gateway) 与本地配置..."
+        echo -en "    ${DIM}同步配置到本机 ~/.openclaw...${NC}"
+        mkdir -p ~/.openclaw/workspace/skills ~/.openclaw/extensions 2>/dev/null
+        cp "$tmpdir/openclaw.json" ~/.openclaw/openclaw.json 2>/dev/null
+        for f in "$tmpdir"/*.md; do
+            [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
+        done
+        if ls templates/skills/*.md 1>/dev/null 2>&1; then
+            for f in templates/skills/*.md; do
+                [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/skills/"$(basename "$f")" 2>/dev/null
+            done
+        fi
+        echo -e " ✔${NC}"
+        
+        echo -en "    ${DIM}启动本机 Gateway 常驻后台服务...${NC}"
+        openclaw gateway install --token "$OPENCLAW_GATEWAY_TOKEN" --force >/dev/null 2>&1
+        openclaw gateway start >/dev/null 2>&1
+        echo -e " ✔${NC}"
+
+        echo ""
+        echo -e "  ${BLUE}[4/7]${NC} 安装 Skills..."
+        print_info "网页浏览和文件读写为内置功能，无需安装"
+        if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
+            for item in "${SELECTED_SKILLS[@]}"; do
+                local skill_name="${item%%:*}"
+                local skill_desc="${item##*:}"
+                if [ -d "$HOME/.openclaw/workspace/skills/${skill_name}" ]; then
+                    print_success "${skill_desc} (已缓存，跳过下载)"
+                else
+                    echo -en "    ${DIM}正在安装 ${skill_name}..."
+                    if openclaw skills install "$skill_name" --force >/dev/null 2>&1; then
+                        echo -e "${NC}"
+                        print_success "${skill_desc}"
+                    else
+                        echo -e "${NC}"
+                        print_warn "${skill_desc} 安装跳过"
+                    fi
+                fi
+            done
+        else
+            print_info "未选择额外 Skills，跳过"
+        fi
+        print_success "文件读写（内置 File System）"
+
+        # Lite 工具函数：使用 node 注入 JSON
+        inject_json_lite() {
+            local js_code="$1"
+            node -e "
+const fs = require('fs');
+const p = '$HOME/.openclaw/openclaw.json';
+const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+${js_code}
+fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+" 2>/dev/null
+        }
+
+        # Lite 通道安装函数
+        install_channel_lite() {
+            local name=$1 label=$2 npm_pkg=$3 check_dir=$4 plugin_name=$5
+            echo -en "    ${DIM}安装 ${label}..."
+            if [ -n "$check_dir" ] && [ -d "$check_dir" ]; then
+                echo -e "${NC}"
+                print_success "${label} 已存在，跳过安装命令"
+                return 0
+            fi
+            
+            npm install --prefix ~/.openclaw --no-save "$npm_pkg" >/dev/null 2>&1
+            local exit_code=$?
+            echo -e " ${NC}"
+            
+            if [ $exit_code -eq 0 ] || [ -d "$check_dir" ]; then
+                print_success "${label} 安装成功"
+                if [ -n "$plugin_name" ]; then
+                    inject_json_lite "
+const allow = (cfg.plugins = cfg.plugins || {}).allow = cfg.plugins.allow || [];
+if (!allow.includes('${plugin_name}')) allow.push('${plugin_name}');
+"
+                fi
+                return 0
+            else
+                print_warn "${label} 安装失败（可手动进入终端重试: npm install --prefix ~/.openclaw ${npm_pkg}）"
+                return 1
+            fi
+        }
+
+        echo ""
+        echo -e "  ${BLUE}[5/7]${NC} 配置通讯频道..."
+        
+        # 微信
+        if [ "$SETUP_WECHAT" = "yes" ]; then
+            if install_channel_lite "wechat" "📱 微信 (openclaw-weixin)" \
+                "@tencent-weixin/openclaw-weixin-cli@latest" \
+                "$HOME/.openclaw/extensions/openclaw-weixin" \
+                "openclaw-weixin"; then
+                # Lite 版下安装完执行 init
+                npx -y @tencent-weixin/openclaw-weixin-cli@latest install >/dev/null 2>&1
+                
+                local weixin_pm="$HOME/.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts"
+                if grep -q 'disableBlockStreaming: false' "$weixin_pm" 2>/dev/null; then
+                    # macOS/Linux sed 差异处理
+                    sed -i '' 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm" 2>/dev/null || \
+                    sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm" 2>/dev/null
+                    print_success "已修补微信插件 block streaming"
+                fi
+                print_info "微信需扫码授权（见下方说明）"
+            fi
+        fi
+
+        # 钉钉
+        if [ "$SETUP_DINGTALK" = "yes" ]; then
+            if install_channel_lite "dingtalk" "🔷 钉钉 (DingTalk)" \
+                "@openclaw/dingtalk" \
+                "$HOME/.openclaw/node_modules/@openclaw/dingtalk" \
+                "@openclaw/dingtalk"; then
+                inject_json_lite "
+cfg.channels = cfg.channels || {};
+cfg.channels.dingtalk = {
+    appKey: '${DINGTALK_APP_KEY}',
+    appSecret: '${DINGTALK_APP_SECRET}',
+    dmPolicy: 'open'
+};
+"
+                print_success "钉钉配置已注入"
+            fi
+        fi
+
+        # Telegram
+        if [ "$SETUP_TELEGRAM" = "yes" ]; then
+            if install_channel_lite "telegram" "✈️ Telegram" \
+                "@openclaw/telegram" \
+                "$HOME/.openclaw/node_modules/@openclaw/telegram" \
+                "@openclaw/telegram"; then
+                inject_json_lite "
+cfg.channels = cfg.channels || {};
+cfg.channels.telegram = {
+    botToken: '${TELEGRAM_BOT_TOKEN}',
+    chatId: '${TELEGRAM_CHAT_ID}',
+    dmPolicy: 'open'
+};
+"
+                print_success "✈️ Telegram 配置已注入"
+            fi
+        fi
+
+        # 飞书
+        if [ "$SETUP_FEISHU" = "yes" ]; then
+            if install_channel_lite "feishu" "🔵 飞书 (Feishu/Lark)" \
+                "@openclaw/feishu" \
+                "$HOME/.openclaw/node_modules/@openclaw/feishu" \
+                "@openclaw/feishu"; then
+                inject_json_lite "
+cfg.channels = cfg.channels || {};
+cfg.channels.feishu = {
+    appId: '${FEISHU_APP_ID}',
+    appSecret: '${FEISHU_APP_SECRET}',
+    dmPolicy: 'open'
+};
+"
+                print_success "飞书配置已注入"
+            fi
+        fi
+
+        # QQ
+        if [ "$SETUP_QQ" = "yes" ]; then
+            if install_channel_lite "qq" "🐧 QQ" \
+                "@openclaw/qq" \
+                "$HOME/.openclaw/node_modules/@openclaw/qq" \
+                "@openclaw/qq"; then
+                inject_json_lite "
+cfg.channels = cfg.channels || {};
+cfg.channels.qq = {
+    url: '${QQ_WEBHOOK_URL}',
+    token: '${QQ_TOKEN}'
+};
+"
+                print_success "QQ 配置已注入"
+            fi
+        fi
+
+        # 自定义频道
+        if [ "$SETUP_CUSTOM_CHANNEL" = "yes" ]; then
+            echo -en "    ${DIM}配置自定义 Webhook 频道...${NC}"
+            inject_json_lite "
+cfg.channels = cfg.channels || {};
+cfg.channels['custom-webhook'] = {
+    url: '${CUSTOM_CHANNEL_WEBHOOK_URL}',
+    token: '${CUSTOM_CHANNEL_TOKEN}',
+    format: '${CUSTOM_CHANNEL_MSG_FORMAT}'
+};
+"
+            echo -e " ✔${NC}"
+            print_success "🔧 自定义 Webhook 频道已配置"
+        fi
+
+        local any_channel="$SETUP_WECHAT$SETUP_DINGTALK$SETUP_TELEGRAM$SETUP_FEISHU$SETUP_QQ$SETUP_CUSTOM_CHANNEL"
+        if [[ "$any_channel" != *yes* ]]; then
+            print_info "未选择通讯频道，跳过"
+        fi
+
+        echo ""
+        echo -e "  ${BLUE}[6/7]${NC} 清理临时文件..."
+        rm -f ~/.openclaw/*.clobbered.* ~/.openclaw/*.bak* 2>/dev/null || true
         rm -rf "$tmpdir"
+        print_success "已清理"
+
+        echo ""
+        echo -e "  ${BLUE}[7/7]${NC} 重启本机服务 (Gateway)..."
+        openclaw gateway restart >/dev/null 2>&1
+        sleep 3
+        print_success "服务已重启并加载最新配置"
 
         echo ""
         echo -e "  ${DIM}════════════════════════════════${NC}"
@@ -1778,8 +1975,19 @@ SOULEOF
         echo -e "  ${GREEN}${BOLD}✅ 简易版 (Lite) 安装完成！${NC}"
         echo ""
         echo -e "  ${BOLD}即刻畅聊${NC}:  openclaw agent -m \"你的问题\""
-        echo -e "  ${BOLD}查看状态${NC}:  openclaw agent -m \"/status\""
+        echo -e "  ${BOLD}终端 UI ${NC}:  openclaw tui"
+        echo -e "  ${BOLD}查看状态${NC}:  openclaw gateway status"
+        echo -e "  ${BOLD}停止后台${NC}:  openclaw gateway stop"
+        echo -e "  ${BOLD}查看日志${NC}:  openclaw logs"
         echo ""
+
+        if [ "$SETUP_WECHAT" = "yes" ]; then
+            echo -e "  ${YELLOW}${BOLD}📱 微信扫码授权${NC}:"
+            echo -e "    openclaw channels login --channel openclaw-weixin"
+            echo -e "    ${DIM}# 终端会显示二维码，用微信扫码授权即可${NC}"
+            echo ""
+        fi
+
         return
     fi
 

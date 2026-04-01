@@ -160,12 +160,20 @@ else
     # ── 简易版卸载 ──
     echo -e "  ${BLUE}[1/5]${NC} 简易版环境清理..."
     if [ "$FULL_REMOVE" = true ]; then
+        # 停掉并卸载开机自启系统服务
+        if command -v openclaw &>/dev/null; then
+            openclaw gateway stop >/dev/null 2>&1 || true
+            openclaw gateway uninstall >/dev/null 2>&1 || true
+            print_success "本地后台通讯服务 (Gateway) 已卸载"
+        fi
+        
         # 移除全局安装的 openclaw
         npm uninstall -g openclaw 2>/dev/null && print_success "openclaw CLI 已卸载" || print_info "openclaw CLI 未全局安装"
+        
         # 清空 ~/.openclaw 目录
         if [ -d "$HOME/.openclaw" ]; then
             rm -rf "$HOME/.openclaw"
-            print_success "~/.openclaw 目录已删除"
+            print_success "~/.openclaw 目录及插件缓存已删除"
         fi
     else
         print_info "标准卸载：保留全局 CLI 和 ~/.openclaw 数据"
