@@ -105,14 +105,24 @@ echo ""
 # ==================== 满血版卸载 ====================
 
 if [ "$INSTALL_MODE" = "full" ]; then
+    # 兼容老版本 docker-compose (v1) 与新版本 docker compose (v2)
+    if docker compose version >/dev/null 2>&1; then
+        # 不使用 alias，直接用变量，alias 在非交互式 shell 中默认关闭
+        COMPOSE_CMD="docker compose"
+    elif command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE_CMD="docker-compose"
+    else
+        COMPOSE_CMD="docker compose" # fallback
+    fi
+
     # Step 1: 停止并移除容器
     echo -e "  ${BLUE}[1/5]${NC} 停止并移除容器..."
     compose_files="-f docker-compose.yml"
     [ -f docker-compose.browser.yml ] && compose_files="$compose_files -f docker-compose.browser.yml"
     [ -f docker-compose.mirror.yml ] && compose_files="$compose_files -f docker-compose.mirror.yml"
 
-    docker compose $compose_files kill 2>/dev/null || true
-    docker compose $compose_files down --remove-orphans -t 1 2>/dev/null || true
+    $COMPOSE_CMD $compose_files kill 2>/dev/null || true
+    $COMPOSE_CMD $compose_files down --remove-orphans -t 1 2>/dev/null || true
 
     # 确保容器已被移除
     docker rm -f openclaw-main 2>/dev/null || true
