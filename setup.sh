@@ -1739,9 +1739,35 @@ SOULEOF
 
         echo ""
         echo -e "  ${BLUE}[3/3]${NC} 初始化本地环境 (简易版)..."
-        echo -en "    ${DIM}全局安装 openclaw CLI (依赖网络 npm，约需半分钟)...${NC}"
-        npm install -g openclaw >/dev/null 2>&1
-        echo -e " ✔${NC}"
+        echo -en "    ${DIM}正在全局安装 openclaw CLI (初次较慢，请稍候)...${NC}" > /dev/tty
+        
+        # 将安装置于后台，实现炫酷的旋转进度条
+        npm install -g openclaw >/dev/null 2>&1 &
+        local npm_pid=$!
+        local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        local spin_idx=0
+        
+        while kill -0 $npm_pid 2>/dev/null; do
+            local s_char="${spin:$spin_idx:1}"
+            spin_idx=$(( (spin_idx + 1) % ${#spin} ))
+            printf "\r    ${DIM}正在全局安装 openclaw CLI %s (依赖网络)...${NC}     " "$s_char" > /dev/tty
+            sleep 0.15
+        done
+        
+        wait $npm_pid
+        local npm_exit=$?
+        
+        # 清除加载进度行
+        printf "\r%-80s\r" "" > /dev/tty
+        
+        if [ $npm_exit -eq 0 ]; then
+            echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✔"
+        else
+            echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✖"
+            print_error "npm 全局安装失败！可能是由于缺少 sudo 权限或网络异常。"
+            print_error "请尝试手动执行: sudo npm install -g openclaw"
+            exit 1
+        fi
         
         # 简易版不处理 Skills 插件与 Docker 通道通讯等复杂功能，作为开箱即用入口即可
         rm -rf "$tmpdir"
