@@ -1015,8 +1015,8 @@ step3() {
             print_success "已选择 🔷 钉钉"
             echo ""
             echo -e "  ${BOLD}钉钉企业机器人配置：${NC}"
-            echo -e "  ${DIM}💡 提示：个人用户可免费在手机钉钉创建一个“测试团队 / 企业”。${NC}"
-            echo -e "  ${DIM}然后前往电脑端网页 (https://open.dingtalk.com)，进入“应用开发 -> 企业内部开发 -> 机器人”创建应用并获取凭证。${NC}"
+            echo -e "  ${DIM}💡 没有企业？手机钉钉底部【通讯录】滑到底，点击“创建/加入企业”免费创建一个“测试组织”。${NC}"
+            echo -e "  ${DIM}💡 然后前往电脑网页 (https://open.dingtalk.com)，进入“应用开发 -> 企业内部开发 -> 机器人”创建应用并摘取凭证。${NC}"
             echo ""
             prompt_input "App Key" "$DINGTALK_APP_KEY" DINGTALK_APP_KEY
             prompt_secret "App Secret" "$DINGTALK_APP_SECRET" DINGTALK_APP_SECRET
@@ -1037,8 +1037,8 @@ step3() {
             print_success "已选择 🔵 飞书"
             echo ""
             echo -e "  ${BOLD}飞书企业自建应用配置：${NC}"
-            echo -e "  ${DIM}💡 提示：没有企业的个人用户，可直接用手机 APP 免费创建一个空组织（如“测试团队”）。${NC}"
-            echo -e "  ${DIM}然后前往电脑端网页 (https://open.feishu.cn) 登录开发者后台，点击“创建企业自建应用”即可获取凭证。${NC}"
+            echo -e "  ${DIM}💡 没有企业？手机飞书点击左上角头像 -> “创建或加入团队”，即可免费创建一个“测试团队”。${NC}"
+            echo -e "  ${DIM}💡 然后前往电脑网页 (https://open.feishu.cn) 登录开发者后台，点击“创建企业自建应用”摘取凭证。${NC}"
             echo ""
             prompt_input "App ID" "$FEISHU_APP_ID" FEISHU_APP_ID
             prompt_secret "App Secret" "$FEISHU_APP_SECRET" FEISHU_APP_SECRET
