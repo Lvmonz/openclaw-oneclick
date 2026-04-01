@@ -638,43 +638,44 @@ select_model_grid() {
     col_width=$(( col_width + 4 ))
     [ $col_width -gt 40 ] && col_width=40
 
-    echo -e "  ${BOLD}${title}${NC}"
-    echo -e "  ${DIM}↑↓←→ 移动 | Enter 确认${NC}"
-    echo ""
+    # 所有交互渲染直接写 /dev/tty，避免 tee 缓冲导致闪烁
+    echo -e "  ${BOLD}${title}${NC}" > /dev/tty
+    echo -e "  ${DIM}↑↓←→ 移动 | Enter 确认${NC}" > /dev/tty
+    echo "" > /dev/tty
 
     # 占位行
-    for ((r=0; r<rows; r++)); do echo ""; done
-    echo ""
+    for ((r=0; r<rows; r++)); do echo "" > /dev/tty; done
+    echo "" > /dev/tty
 
     render_grid() {
         # 回退到网格顶部
-        for ((r=0; r<rows+1; r++)); do echo -en "\033[A"; done
-        echo -en "\r"
+        for ((r=0; r<rows+1; r++)); do echo -en "\033[A" > /dev/tty; done
+        echo -en "\r" > /dev/tty
 
         for ((r=0; r<rows; r++)); do
-            echo -en "  "
+            echo -en "  " > /dev/tty
             for ((c=0; c<cols; c++)); do
                 local idx=$((r * cols + c))
                 if [ $idx -ge $count ]; then
-                    printf "%-${col_width}s" ""
+                    printf "%-${col_width}s" "" > /dev/tty
                 elif [ $idx -eq $cursor ]; then
-                    printf "${CYAN}▸ %-$((col_width-2))s${NC}" "${items[$idx]:0:$((col_width-4))}"
+                    printf "${CYAN}▸ %-$((col_width-2))s${NC}" "${items[$idx]:0:$((col_width-4))}" > /dev/tty
                 else
-                    printf "  %-$((col_width-2))s" "${items[$idx]:0:$((col_width-4))}"
+                    printf "  %-$((col_width-2))s" "${items[$idx]:0:$((col_width-4))}" > /dev/tty
                 fi
             done
-            echo ""
+            echo "" > /dev/tty
         done
-        echo -e "  ${DIM}共 ${count} 个模型${NC}      "
+        echo -e "  ${DIM}共 ${count} 个模型${NC}      " > /dev/tty
     }
 
     render_grid
 
     while true; do
-        IFS= read -rsn1 key
+        IFS= read -rsn1 key < /dev/tty
         case "$key" in
             $'\x1b')
-                read -rsn2 arrow
+                read -rsn2 arrow < /dev/tty
                 case "$arrow" in
                     '[A') ((cursor >= cols)) && ((cursor -= cols)) ;;
                     '[B') ((cursor + cols < count)) && ((cursor += cols)) ;;
@@ -998,28 +999,28 @@ step3() {
     local cursor=0
 
     render_menu() {
-        for ((i=0; i<num_items+1; i++)); do echo -en "\033[A"; done
-        echo -en "\r"
+        for ((i=0; i<num_items+1; i++)); do echo -en "\033[A" > /dev/tty; done
+        echo -en "\r" > /dev/tty
         for ((i=0; i<num_items; i++)); do
             local prefix="  "
             [ $i -eq $cursor ] && prefix="${CYAN}▸ ${NC}"
             if [ ${ITEM_SELECTED[$i]} -eq 1 ]; then
-                echo -e "${prefix}${GREEN}[✔]${NC} ${ITEM_LABELS[$i]}                    "
+                echo -e "${prefix}${GREEN}[✔]${NC} ${ITEM_LABELS[$i]}                    " > /dev/tty
             else
-                echo -e "${prefix}${DIM}[ ]${NC} ${ITEM_LABELS[$i]}                    "
+                echo -e "${prefix}${DIM}[ ]${NC} ${ITEM_LABELS[$i]}                    " > /dev/tty
             fi
         done
-        echo -e "  ${DIM}↑↓ 移动 | 空格 切换 | a 全选/全不选 | Enter 确认${NC}     "
+        echo -e "  ${DIM}↑↓ 移动 | 空格 切换 | a 全选/全不选 | Enter 确认${NC}     " > /dev/tty
     }
 
-    for ((i=0; i<num_items+1; i++)); do echo ""; done
+    for ((i=0; i<num_items+1; i++)); do echo "" > /dev/tty; done
     render_menu
 
     while true; do
-        IFS= read -rsn1 key
+        IFS= read -rsn1 key < /dev/tty
         case "$key" in
             $'\x1b')
-                read -rsn2 arrow
+                read -rsn2 arrow < /dev/tty
                 case "$arrow" in
                     '[A') ((cursor > 0)) && ((cursor--)) ;;
                     '[B') ((cursor < num_items-1)) && ((cursor++)) ;;
