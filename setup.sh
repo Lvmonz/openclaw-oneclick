@@ -1904,11 +1904,7 @@ cfg.channels.dingtalk = {
 
         # Telegram
         if [ "$SETUP_TELEGRAM" = "yes" ]; then
-            if install_channel_lite "telegram" "✈️ Telegram" \
-                "@openclaw/telegram" \
-                "$HOME/.openclaw/node_modules/@openclaw/telegram" \
-                "@openclaw/telegram"; then
-                inject_json_lite "
+            inject_json_lite "
 cfg.channels = cfg.channels || {};
 cfg.channels.telegram = {
     botToken: '${TELEGRAM_BOT_TOKEN}',
@@ -1916,8 +1912,7 @@ cfg.channels.telegram = {
     dmPolicy: 'open'
 };
 "
-                print_success "✈️ Telegram 配置已注入"
-            fi
+            print_success "✈️ Telegram 配置已注入"
         fi
 
         # 飞书
