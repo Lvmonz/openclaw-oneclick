@@ -1893,15 +1893,19 @@ MIRRORYML
     install_channel() {
         local name=$1 label=$2 install_cmd=$3 check_dir=$4 plugin_name=$5
         echo -en "    ${DIM}安装 ${label}..."
-        if docker exec openclaw-main test -d "$check_dir" 2>/dev/null; then
+        if [ -n "$check_dir" ] && docker exec openclaw-main test -d "$check_dir" 2>/dev/null; then
             echo -e "${NC}"
-            print_success "${label} 已存在，跳过"
+            print_success "${label} 已存在，跳过安装命令"
             return 0
         fi
+        
         # 执行安装命令，隐藏非进度日志
         eval "docker exec openclaw-main $install_cmd" 2>/dev/null 1>/dev/null
+        local exit_code=$?
         echo -e " ${NC}"
-        if docker exec openclaw-main test -d "$check_dir" 2>/dev/null; then
+        
+        # 如果退出码为 0 或预期目录已生成，判定为成功
+        if [ $exit_code -eq 0 ] || { [ -n "$check_dir" ] && docker exec openclaw-main test -d "$check_dir" 2>/dev/null; }; then
             print_success "${label} 安装成功"
             # 注入 plugins.allow
             if [ -n "$plugin_name" ]; then
@@ -1917,34 +1921,36 @@ if '${plugin_name}' not in allow:
             fi
             return 0
         else
-            print_warn "${label} 安装跳过（可手动安装）"
+            print_warn "${label} 安装失败（可手动进入容器重试）"
             return 1
         fi
     }
 
     # 微信
     if [ "$SETUP_WECHAT" = "yes" ]; then
-        install_channel "wechat" "📱 微信 (openclaw-weixin)" \
+        if install_channel "wechat" "📱 微信 (openclaw-weixin)" \
             "npx -y @tencent-weixin/openclaw-weixin-cli@latest install" \
             "/home/node/.openclaw/extensions/openclaw-weixin" \
-            "openclaw-weixin"
-        # 修补 block streaming
-        local weixin_pm="/home/node/.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts"
-        if docker exec openclaw-main grep -q 'disableBlockStreaming: false' "$weixin_pm" 2>/dev/null; then
-            docker exec openclaw-main sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm" 2>/dev/null
-            print_success "已修补微信插件 block streaming"
+            "openclaw-weixin"; then
+            # 修补 block streaming
+            local weixin_pm="/home/node/.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts"
+            if docker exec openclaw-main grep -q 'disableBlockStreaming: false' "$weixin_pm" 2>/dev/null; then
+                docker exec openclaw-main sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm" 2>/dev/null
+                print_success "已修补微信插件 block streaming"
+            fi
+            print_info "微信需扫码授权（见下方说明）"
         fi
-        print_info "微信需扫码授权（见下方说明）"
     fi
 
     # 钉钉
     if [ "$SETUP_DINGTALK" = "yes" ]; then
-        install_channel "dingtalk" "🔷 钉钉 (DingTalk)" \
+        if install_channel "dingtalk" "🔷 钉钉 (DingTalk)" \
             "openclaw channels add dingtalk" \
             "/home/node/.openclaw/extensions/openclaw-dingtalk" \
-            "openclaw-dingtalk"
-        # 注入钉钉配置
-        docker exec openclaw-main python3 -c "
+            "openclaw-dingtalk"; then
+            
+            # 注入钉钉配置
+            docker exec openclaw-main python3 -c "
 import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
@@ -1953,7 +1959,8 @@ cfg.setdefault('channels', {})['dingtalk'] = {
     'appSecret': '${DINGTALK_APP_SECRET}'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
-        print_success "钉钉配置已注入"
+            print_success "钉钉配置已注入"
+        fi
     fi
 
     # Telegram
@@ -1976,12 +1983,14 @@ p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
 
     # 飞书
     if [ "$SETUP_FEISHU" = "yes" ]; then
-        install_channel "feishu" "🔵 飞书 (Feishu/Lark)" \
+        # 飞书官方插件不一定会安装到固定的 openclaw-feishu 文件夹，这里改用包名后缀且允许兜底
+        if install_channel "feishu" "🔵 飞书 (Feishu/Lark)" \
             "openclaw plugins install @openclaw/feishu" \
-            "/home/node/.openclaw/extensions/openclaw-feishu" \
-            "openclaw-feishu"
-        # 注入飞书配置
-        docker exec openclaw-main python3 -c "
+            "" \
+            "@openclaw/feishu"; then
+            
+            # 注入飞书配置
+            docker exec openclaw-main python3 -c "
 import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
@@ -1990,17 +1999,19 @@ cfg.setdefault('channels', {})['feishu'] = {
     'appSecret': '${FEISHU_APP_SECRET}'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
-        print_success "飞书配置已注入"
+            print_success "飞书配置已注入"
+        fi
     fi
 
     # QQ
     if [ "$SETUP_QQ" = "yes" ]; then
-        install_channel "qq" "🐧 QQ" \
+        if install_channel "qq" "🐧 QQ" \
             "openclaw channels add qq" \
             "/home/node/.openclaw/extensions/openclaw-qq" \
-            "openclaw-qq"
-        # 注入 QQ 配置
-        docker exec openclaw-main python3 -c "
+            "openclaw-qq"; then
+            
+            # 注入 QQ 配置
+            docker exec openclaw-main python3 -c "
 import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
@@ -2009,7 +2020,8 @@ cfg.setdefault('channels', {})['qq'] = {
     'token': '${QQ_TOKEN}'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
-        print_success "QQ 配置已注入"
+            print_success "QQ 配置已注入"
+        fi
     fi
 
     # 自定义频道
