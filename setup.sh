@@ -1015,6 +1015,9 @@ step3() {
             print_success "已选择 🔷 钉钉"
             echo ""
             echo -e "  ${BOLD}钉钉企业机器人配置：${NC}"
+            echo -e "  ${DIM}💡 提示：个人用户可免费在手机钉钉创建一个“测试团队 / 企业”。${NC}"
+            echo -e "  ${DIM}然后前往电脑端网页 (https://open.dingtalk.com)，进入“应用开发 -> 企业内部开发 -> 机器人”创建应用并获取凭证。${NC}"
+            echo ""
             prompt_input "App Key" "$DINGTALK_APP_KEY" DINGTALK_APP_KEY
             prompt_secret "App Secret" "$DINGTALK_APP_SECRET" DINGTALK_APP_SECRET
             ;;
@@ -1023,6 +1026,9 @@ step3() {
             print_success "已选择 ✈️ Telegram"
             echo ""
             echo -e "  ${BOLD}Telegram 机器人配置：${NC}"
+            echo -e "  ${DIM}💡 提示：在 Telegram 顶部搜索 @BotFather 并发送 /newbot，起个名字即可创建机器人。${NC}"
+            echo -e "  ${DIM}它会返回一段 'Use this token to access the HTTP API:' 下方的红色文本，那就是你的 Token。${NC}"
+            echo ""
             prompt_secret "Bot Token" "$TELEGRAM_BOT_TOKEN" TELEGRAM_BOT_TOKEN
             prompt_input "Chat ID (选填，留空则接收任何人消息)" "$TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
             ;;
@@ -1031,6 +1037,9 @@ step3() {
             print_success "已选择 🔵 飞书"
             echo ""
             echo -e "  ${BOLD}飞书企业自建应用配置：${NC}"
+            echo -e "  ${DIM}💡 提示：没有企业的个人用户，可直接用手机 APP 免费创建一个空组织（如“测试团队”）。${NC}"
+            echo -e "  ${DIM}然后前往电脑端网页 (https://open.feishu.cn) 登录开发者后台，点击“创建企业自建应用”即可获取凭证。${NC}"
+            echo ""
             prompt_input "App ID" "$FEISHU_APP_ID" FEISHU_APP_ID
             prompt_secret "App Secret" "$FEISHU_APP_SECRET" FEISHU_APP_SECRET
             ;;
@@ -1039,6 +1048,9 @@ step3() {
             print_success "已选择 🐧 QQ"
             echo ""
             echo -e "  ${BOLD}QQ 机器人配置：${NC}"
+            echo -e "  ${DIM}💡 提示：建议使用免签约防封号的 NapCatQQ / LLOnebot 客户端作为通讯层。${NC}"
+            echo -e "  ${DIM}启动任意客户端后进入后台，开启 Http 监听服务，即可得到类似 http://127.0.0.1:3000 的上报地址。${NC}"
+            echo ""
             prompt_input "OneBot Webhook URL / 开放平台 URL" "$QQ_WEBHOOK_URL" QQ_WEBHOOK_URL
             prompt_secret "Token / Secret (选填)" "$QQ_TOKEN" QQ_TOKEN
             ;;
