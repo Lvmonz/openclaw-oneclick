@@ -315,12 +315,12 @@ SETUP_CUSTOM_CHANNEL="no"
 CUSTOM_CHANNEL_WEBHOOK_URL=""
 CUSTOM_CHANNEL_TOKEN=""
 CUSTOM_CHANNEL_MSG_FORMAT="json"
-DINGTALK_WEBHOOK_URL=""
-DINGTALK_SECRET=""
+DINGTALK_APP_KEY=""
+DINGTALK_APP_SECRET=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
-FEISHU_WEBHOOK_URL=""
-FEISHU_SECRET=""
+FEISHU_APP_ID=""
+FEISHU_APP_SECRET=""
 QQ_WEBHOOK_URL=""
 QQ_TOKEN=""
 USER_NAME=""
@@ -1014,9 +1014,9 @@ step3() {
             SETUP_DINGTALK="yes"
             print_success "已选择 🔷 钉钉"
             echo ""
-            echo -e "  ${BOLD}钉钉机器人配置：${NC}"
-            prompt_input "Webhook URL" "$DINGTALK_WEBHOOK_URL" DINGTALK_WEBHOOK_URL
-            prompt_secret "加签 Secret (选填)" "$DINGTALK_SECRET" DINGTALK_SECRET
+            echo -e "  ${BOLD}钉钉企业机器人配置：${NC}"
+            prompt_input "App Key" "$DINGTALK_APP_KEY" DINGTALK_APP_KEY
+            prompt_secret "App Secret" "$DINGTALK_APP_SECRET" DINGTALK_APP_SECRET
             ;;
         3)
             SETUP_TELEGRAM="yes"
@@ -1030,9 +1030,9 @@ step3() {
             SETUP_FEISHU="yes"
             print_success "已选择 🔵 飞书"
             echo ""
-            echo -e "  ${BOLD}飞书机器人配置：${NC}"
-            prompt_input "Webhook URL" "$FEISHU_WEBHOOK_URL" FEISHU_WEBHOOK_URL
-            prompt_secret "签名校验 Secret (选填)" "$FEISHU_SECRET" FEISHU_SECRET
+            echo -e "  ${BOLD}飞书企业自建应用配置：${NC}"
+            prompt_input "App ID" "$FEISHU_APP_ID" FEISHU_APP_ID
+            prompt_secret "App Secret" "$FEISHU_APP_SECRET" FEISHU_APP_SECRET
             ;;
         5)
             SETUP_QQ="yes"
@@ -1342,12 +1342,12 @@ SETUP_CUSTOM_CHANNEL=$SETUP_CUSTOM_CHANNEL
 CUSTOM_CHANNEL_WEBHOOK_URL=$CUSTOM_CHANNEL_WEBHOOK_URL
 CUSTOM_CHANNEL_TOKEN=$CUSTOM_CHANNEL_TOKEN
 CUSTOM_CHANNEL_MSG_FORMAT=$CUSTOM_CHANNEL_MSG_FORMAT
-DINGTALK_WEBHOOK_URL=$DINGTALK_WEBHOOK_URL
-DINGTALK_SECRET=$DINGTALK_SECRET
+DINGTALK_APP_KEY=$DINGTALK_APP_KEY
+DINGTALK_APP_SECRET=$DINGTALK_APP_SECRET
 TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
-FEISHU_WEBHOOK_URL=$FEISHU_WEBHOOK_URL
-FEISHU_SECRET=$FEISHU_SECRET
+FEISHU_APP_ID=$FEISHU_APP_ID
+FEISHU_APP_SECRET=$FEISHU_APP_SECRET
 QQ_WEBHOOK_URL=$QQ_WEBHOOK_URL
 QQ_TOKEN=$QQ_TOKEN
 SHARE_CHROME=$SHARE_CHROME
@@ -1937,8 +1937,8 @@ import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 cfg.setdefault('channels', {})['dingtalk'] = {
-    'webhookUrl': '${DINGTALK_WEBHOOK_URL}',
-    'secret': '${DINGTALK_SECRET}'
+    'appKey': '${DINGTALK_APP_KEY}',
+    'appSecret': '${DINGTALK_APP_SECRET}'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
         print_success "钉钉配置已注入"
@@ -1974,8 +1974,8 @@ import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 cfg.setdefault('channels', {})['feishu'] = {
-    'webhookUrl': '${FEISHU_WEBHOOK_URL}',
-    'secret': '${FEISHU_SECRET}'
+    'appId': '${FEISHU_APP_ID}',
+    'appSecret': '${FEISHU_APP_SECRET}'
 }
 p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
         print_success "飞书配置已注入"
