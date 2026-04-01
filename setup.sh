@@ -1732,31 +1732,35 @@ SOULEOF
     if [ "$INSTALL_MODE" = "lite" ]; then
         echo ""
         echo -e "  ${BLUE}[2/7]${NC} 安装 OpenClaw CLI (全局环境)..."
-        echo -en "    ${DIM}正在全局安装 openclaw CLI (初次较慢，请稍候)...${NC}" > /dev/tty
-        
-        # 将安装置于后台，实现炫酷的旋转进度条
-        npm install -g openclaw >/dev/null 2>&1 &
-        local npm_pid=$!
-        local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-        local spin_idx=0
-        
-        while kill -0 $npm_pid 2>/dev/null; do
-            local s_char="${spin:$spin_idx:1}"
-            spin_idx=$(( (spin_idx + 1) % ${#spin} ))
-            printf "\r    ${DIM}正在全局安装 openclaw CLI %s (依赖网络)...${NC}     " "$s_char" > /dev/tty
-            sleep 0.15
-        done
-        wait $npm_pid
-        local npm_exit=$?
-        printf "\r%-80s\r" "" > /dev/tty
-        
-        if [ $npm_exit -eq 0 ]; then
-            echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✔"
+        if command -v openclaw >/dev/null 2>&1; then
+            echo -e "    ${DIM}检测到已有 openclaw CLI，跳过重新下载...${NC} ✔"
         else
-            echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✖"
-            print_error "npm 全局安装失败！可能是由于缺少 sudo 权限或网络异常。"
-            print_error "请尝试手动执行: sudo npm install -g openclaw"
-            exit 1
+            echo -en "    ${DIM}正在全局安装 openclaw CLI (初次较慢，请稍候)...${NC}" > /dev/tty
+            
+            # 将安装置于后台，实现炫酷的旋转进度条
+            npm install -g openclaw >/dev/null 2>&1 &
+            local npm_pid=$!
+            local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+            local spin_idx=0
+            
+            while kill -0 $npm_pid 2>/dev/null; do
+                local s_char="${spin:$spin_idx:1}"
+                spin_idx=$(( (spin_idx + 1) % ${#spin} ))
+                printf "\r    ${DIM}正在全局安装 openclaw CLI %s (依赖网络)...${NC}     " "$s_char" > /dev/tty
+                sleep 0.15
+            done
+            wait $npm_pid
+            local npm_exit=$?
+            printf "\r%-80s\r" "" > /dev/tty
+            
+            if [ $npm_exit -eq 0 ]; then
+                echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✔"
+            else
+                echo -e "    ${DIM}全局安装 openclaw CLI...${NC} ✖"
+                print_error "npm 全局安装失败！可能是由于缺少 sudo 权限或网络异常。"
+                print_error "请尝试手动执行: sudo npm install -g openclaw"
+                exit 1
+            fi
         fi
         
         # Lite 工具函数：使用 node 注入 JSON
