@@ -315,6 +315,14 @@ SETUP_CUSTOM_CHANNEL="no"
 CUSTOM_CHANNEL_WEBHOOK_URL=""
 CUSTOM_CHANNEL_TOKEN=""
 CUSTOM_CHANNEL_MSG_FORMAT="json"
+DINGTALK_WEBHOOK_URL=""
+DINGTALK_SECRET=""
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+FEISHU_WEBHOOK_URL=""
+FEISHU_SECRET=""
+QQ_WEBHOOK_URL=""
+QQ_TOKEN=""
 USER_NAME=""
 USER_LANG="中文"
 TZ="Asia/Shanghai"
@@ -998,11 +1006,42 @@ step3() {
     SETUP_FEISHU="no"; SETUP_QQ="no"; SETUP_CUSTOM_CHANNEL="no"
 
     case $ch_choice in
-        1) SETUP_WECHAT="yes";    print_success "已选择 📱 微信" ;;
-        2) SETUP_DINGTALK="yes";  print_success "已选择 🔷 钉钉" ;;
-        3) SETUP_TELEGRAM="yes";  print_success "已选择 ✈️  Telegram" ;;
-        4) SETUP_FEISHU="yes";    print_success "已选择 🔵 飞书" ;;
-        5) SETUP_QQ="yes";        print_success "已选择 🐧 QQ" ;;
+        1)
+            SETUP_WECHAT="yes"
+            print_success "已选择 📱 微信 (扫码即可登录，无需配置)"
+            ;;
+        2)
+            SETUP_DINGTALK="yes"
+            print_success "已选择 🔷 钉钉"
+            echo ""
+            echo -e "  ${BOLD}钉钉机器人配置：${NC}"
+            prompt_input "Webhook URL" "$DINGTALK_WEBHOOK_URL" DINGTALK_WEBHOOK_URL
+            prompt_secret "加签 Secret (选填)" "$DINGTALK_SECRET" DINGTALK_SECRET
+            ;;
+        3)
+            SETUP_TELEGRAM="yes"
+            print_success "已选择 ✈️ Telegram"
+            echo ""
+            echo -e "  ${BOLD}Telegram 机器人配置：${NC}"
+            prompt_secret "Bot Token" "$TELEGRAM_BOT_TOKEN" TELEGRAM_BOT_TOKEN
+            prompt_input "Chat ID (选填，留空则接收任何人消息)" "$TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
+            ;;
+        4)
+            SETUP_FEISHU="yes"
+            print_success "已选择 🔵 飞书"
+            echo ""
+            echo -e "  ${BOLD}飞书机器人配置：${NC}"
+            prompt_input "Webhook URL" "$FEISHU_WEBHOOK_URL" FEISHU_WEBHOOK_URL
+            prompt_secret "签名校验 Secret (选填)" "$FEISHU_SECRET" FEISHU_SECRET
+            ;;
+        5)
+            SETUP_QQ="yes"
+            print_success "已选择 🐧 QQ"
+            echo ""
+            echo -e "  ${BOLD}QQ 机器人配置：${NC}"
+            prompt_input "OneBot Webhook URL / 开放平台 URL" "$QQ_WEBHOOK_URL" QQ_WEBHOOK_URL
+            prompt_secret "Token / Secret (选填)" "$QQ_TOKEN" QQ_TOKEN
+            ;;
         6)
             SETUP_CUSTOM_CHANNEL="yes"
             print_success "已选择 🔧 自定义 Webhook"
@@ -1303,6 +1342,14 @@ SETUP_CUSTOM_CHANNEL=$SETUP_CUSTOM_CHANNEL
 CUSTOM_CHANNEL_WEBHOOK_URL=$CUSTOM_CHANNEL_WEBHOOK_URL
 CUSTOM_CHANNEL_TOKEN=$CUSTOM_CHANNEL_TOKEN
 CUSTOM_CHANNEL_MSG_FORMAT=$CUSTOM_CHANNEL_MSG_FORMAT
+DINGTALK_WEBHOOK_URL=$DINGTALK_WEBHOOK_URL
+DINGTALK_SECRET=$DINGTALK_SECRET
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
+FEISHU_WEBHOOK_URL=$FEISHU_WEBHOOK_URL
+FEISHU_SECRET=$FEISHU_SECRET
+QQ_WEBHOOK_URL=$QQ_WEBHOOK_URL
+QQ_TOKEN=$QQ_TOKEN
 SHARE_CHROME=$SHARE_CHROME
 USE_MIRROR=$USE_MIRROR
 TZ=$TZ
@@ -1655,7 +1702,7 @@ MIRRORYML
     pull_log=$(mktemp)
 
     for attempt in 1 2 3; do
-        echo -e "    ${DIM}拉取中 (第 ${attempt}/3 次)...${NC}" > /dev/tty
+        echo -e "    ${DIM}下载中 (第 ${attempt}/3 次)...${NC}" > /dev/tty
 
         # 后台执行 pull，输出写入临时文件以解析进度
         compose_cmd pull 2>&1 | tee "$pull_log" > /dev/null &
@@ -1665,21 +1712,17 @@ MIRRORYML
         local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
         local spin_idx=0
         while kill -0 $pull_pid 2>/dev/null; do
-            # 从日志中提取最新的 Downloading 行，显示汇总大小
+            # 从日志中提取最新的 Downloading 行，显示当前正在下载的最大层
             local dl_info
             dl_info=$(grep -oE 'Downloading [0-9]+\.[0-9]+[kKmMgG]B' "$pull_log" 2>/dev/null | tail -1)
-            local pulled_count
-            pulled_count=$(grep -E -c 'Pull complete|Already exists|Download complete' "$pull_log" 2>/dev/null || true)
-            # 兼容处理可能出现的多行输出
-            pulled_count=$(echo "$pulled_count" | tail -1)
-            [ -z "$pulled_count" ] && pulled_count=0
+            
             local s_char="${spin:$spin_idx:1}"
             spin_idx=$(( (spin_idx + 1) % ${#spin} ))
 
             if [ -n "$dl_info" ]; then
-                printf "\r    ${DIM}%s 下载中... %s | 已完成 %s 层${NC}      " "$s_char" "$dl_info" "$pulled_count" > /dev/tty
+                printf "\r    ${DIM}%s 下载中... %s${NC}                  " "$s_char" "${dl_info/Downloading /已下载 }" > /dev/tty
             else
-                printf "\r    ${DIM}%s 准备中... 已完成 %s 层${NC}          " "$s_char" "$pulled_count" > /dev/tty
+                printf "\r    ${DIM}%s 准备下载中...${NC}                         " "$s_char" > /dev/tty
             fi
             sleep 0.3
         done
@@ -1888,17 +1931,35 @@ if '${plugin_name}' not in allow:
             "openclaw channels add dingtalk" \
             "/home/node/.openclaw/extensions/openclaw-dingtalk" \
             "openclaw-dingtalk"
-        print_info "钉钉需配置企业应用 App ID/Secret（见文档）"
+        # 注入钉钉配置
+        docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+cfg.setdefault('channels', {})['dingtalk'] = {
+    'webhookUrl': '${DINGTALK_WEBHOOK_URL}',
+    'secret': '${DINGTALK_SECRET}'
+}
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
+        print_success "钉钉配置已注入"
     fi
 
     # Telegram
     if [ "$SETUP_TELEGRAM" = "yes" ]; then
         echo -en "    ${DIM}配置 Telegram..."
-        # Telegram 为内置频道，通过 openclaw channels add 配置
         docker exec openclaw-main openclaw channels add telegram 2>/dev/null 1>/dev/null || true
+        # 注入 Telegram 配置
+        docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+cfg.setdefault('channels', {})['telegram'] = {
+    'botToken': '${TELEGRAM_BOT_TOKEN}',
+    'chatId': '${TELEGRAM_CHAT_ID}'
+}
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
         echo -e " ${NC}"
-        print_success "✈️ Telegram 已配置"
-        print_info "Telegram 需 Bot Token（从 @BotFather 获取）"
+        print_success "✈️ Telegram 配置已注入"
     fi
 
     # 飞书
@@ -1907,7 +1968,17 @@ if '${plugin_name}' not in allow:
             "openclaw plugins install @openclaw/feishu" \
             "/home/node/.openclaw/extensions/openclaw-feishu" \
             "openclaw-feishu"
-        print_info "飞书需配置企业应用 App ID/Secret"
+        # 注入飞书配置
+        docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+cfg.setdefault('channels', {})['feishu'] = {
+    'webhookUrl': '${FEISHU_WEBHOOK_URL}',
+    'secret': '${FEISHU_SECRET}'
+}
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
+        print_success "飞书配置已注入"
     fi
 
     # QQ
@@ -1916,7 +1987,17 @@ if '${plugin_name}' not in allow:
             "openclaw channels add qq" \
             "/home/node/.openclaw/extensions/openclaw-qq" \
             "openclaw-qq"
-        print_info "QQ 需配置 Bot 应用凭证"
+        # 注入 QQ 配置
+        docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+cfg.setdefault('channels', {})['qq'] = {
+    'url': '${QQ_WEBHOOK_URL}',
+    'token': '${QQ_TOKEN}'
+}
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))" 2>/dev/null
+        print_success "QQ 配置已注入"
     fi
 
     # 自定义频道
