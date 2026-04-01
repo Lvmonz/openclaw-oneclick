@@ -2,5 +2,6 @@
 config/
 workspace/
 skills/
+logs/
 *.tar.gz
 *.gpg

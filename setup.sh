@@ -1,13 +1,24 @@
 #!/bin/bash
 # ============================================
 # 🦞 OpenClaw 一键安装脚本（交互式）
-# 版本: 1.0.0
+# 版本: 2.0.0
 # ============================================
 
 # 注意：不使用 set -e，关键步骤手动检查错误
 
-# 防止 Ctrl+Z (SIGTSTP) 将脚本挂起导致 docker 锁死，捕获后直接清理所有相关子进程并强制终止
-trap 'echo -e "\n\033[0;31m检测到 Ctrl+Z 操作，已强行清理后台残留环境进程以防止死锁。\033[0m"; pkill -P $$; kill -9 $$' SIGTSTP
+# 统一中断清理函数
+cleanup() {
+    local sig=$1
+    echo ""
+    echo -e "\033[1;33m⚠\033[0m 检测到中断信号 ($sig)，正在清理..."
+    # 终止所有子进程
+    jobs -p 2>/dev/null | xargs kill -9 2>/dev/null || true
+    pkill -P $$ 2>/dev/null || true
+    echo -e "\033[1;33m⚠\033[0m 安装已取消。你的配置已保存到 .env，下次运行 ./setup.sh 可继续。"
+    exit 0
+}
+trap 'cleanup SIGINT' INT
+trap 'cleanup SIGTSTP' TSTP
 
 # ==================== 工具函数 ====================
 
@@ -177,8 +188,16 @@ compose_cmd() {
     docker compose $files "$@"
 }
 
-# 捕获 Ctrl+C
-trap 'echo ""; echo ""; print_warn "安装已取消。你的配置已保存到 .env，下次运行 ./setup.sh 可继续。"; echo ""; exit 0' INT
+# ==================== 安装日志 ====================
+
+LOG_DIR="$(cd "$(dirname "$0")" && pwd)/logs"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+LOG_FILE="$LOG_DIR/install_$(date +%Y%m%d_%H%M%S).log"
+# 清理超过 24h 的旧日志
+find "$LOG_DIR" -name "install_*.log" -mtime +1 -delete 2>/dev/null || true
+
+# tee 输出到日志文件（保留终端交互）
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 # ==================== 环境检查 ====================
 
@@ -286,12 +305,21 @@ NEWAPI_API_KEY=""
 API_FORMAT="openai-completions"
 PRIMARY_MODEL=""
 THINKING_MODEL=""
-SETUP_WECHAT="yes"
+SETUP_WECHAT="no"
 SHARE_CHROME="yes"
+SETUP_DINGTALK="no"
+SETUP_TELEGRAM="no"
+SETUP_FEISHU="no"
+SETUP_QQ="no"
+SETUP_CUSTOM_CHANNEL="no"
+CUSTOM_CHANNEL_WEBHOOK_URL=""
+CUSTOM_CHANNEL_TOKEN=""
+CUSTOM_CHANNEL_MSG_FORMAT="json"
 USER_NAME=""
 USER_LANG="中文"
 TZ="Asia/Shanghai"
 USE_MIRROR="no"
+INSTALL_MODE=""
 HAS_EXISTING_CONFIG="no"
 
 if [ -f .env ]; then
@@ -309,13 +337,51 @@ if [ -f .env ]; then
     sleep 1
 fi
 
-# 设置 step3 默认值（微信+浏览器必选，Skills 全选，Linux 默认开镜像）
-SETUP_WECHAT="yes"
-SHARE_CHROME="yes"
+# 设置 step3 默认值（Skills 全选，Linux 默认开镜像）
 SELECTED_SKILLS=("summarize:📝 长文摘要 (summarize)" "openclaw-cost-tracker:💰 成本追踪 (openclaw-cost-tracker)")
 if [ "$(uname -s)" = "Linux" ]; then
     USE_MIRROR="yes"
 fi
+
+# ==================== Step 0: 版本选择 ====================
+
+step0() {
+    print_header
+    echo -e "  ${BOLD}选择安装版本：${NC}"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} ⚡ 简易版 (lite)"
+    echo -e "     ${DIM}不需要 Docker，使用本地浏览器和本地环境${NC}"
+    echo -e "     ${DIM}适合快速体验，资源占用少${NC}"
+    echo ""
+    echo -e "  ${GREEN}2)${NC} 🚀 满血版 (full)"
+    echo -e "     ${DIM}Docker 容器化部署 + 独立浏览器镜像${NC}"
+    echo -e "     ${DIM}完整隔离环境，推荐生产使用${NC}"
+    echo ""
+
+    local default_choice="2"
+    if [ "$INSTALL_MODE" = "lite" ]; then
+        default_choice="1"
+    fi
+
+    echo -en "  选择 ${DIM}[${default_choice}]${NC}: "
+    read -r version_choice
+    version_choice=${version_choice:-$default_choice}
+
+    case $version_choice in
+        1)
+            INSTALL_MODE="lite"
+            SHARE_CHROME="no"
+            print_success "已选择 简易版 (lite)"
+            ;;
+        *)
+            INSTALL_MODE="full"
+            SHARE_CHROME="yes"
+            print_success "已选择 满血版 (full)"
+            ;;
+    esac
+    echo ""
+    sleep 1
+}
 
 # ==================== Step 1: 模型供应商 ====================
 # 参考社区脚本: github.com/miaoxworld/OpenClawInstaller (setup_ai_provider)
@@ -484,6 +550,195 @@ step1() {
     fi
 }
 
+# ==================== 动态模型获取 ====================
+
+# 从 Provider API 获取可用模型列表
+# 用法: fetch_models → 结果存入 FETCHED_MODELS 数组
+FETCHED_MODELS=()
+
+fetch_models() {
+    FETCHED_MODELS=()
+    local base_url="$NEWAPI_BASE_URL"
+    local api_key="$NEWAPI_API_KEY"
+
+    echo -en "  ${DIM}正在从 API 获取可用模型列表..."
+
+    local response=""
+    if [ "$PROVIDER_NAME" = "anthropic" ]; then
+        response=$(curl -s -H "x-api-key: $api_key" -H "anthropic-version: 2023-06-01" \
+            "${base_url}/models" --max-time 10 2>/dev/null)
+    else
+        response=$(curl -s -H "Authorization: Bearer $api_key" \
+            "${base_url}/models" --max-time 10 2>/dev/null)
+    fi
+
+    if [ -z "$response" ]; then
+        echo -e " 失败${NC}"
+        return 1
+    fi
+
+    # 解析 JSON 提取 model id 列表（兼容多种格式）
+    local ids
+    if command -v python3 &>/dev/null; then
+        ids=$(echo "$response" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    models = data.get('data', data.get('models', []))
+    for m in models:
+        mid = m.get('id', m.get('name', ''))
+        if mid:
+            print(mid)
+except:
+    pass
+" 2>/dev/null)
+    else
+        # 简单 grep 回退
+        ids=$(echo "$response" | grep -oP '"id"\s*:\s*"[^"]*"' | sed 's/"id"\s*:\s*"//;s/"//' 2>/dev/null)
+    fi
+
+    if [ -z "$ids" ]; then
+        echo -e " 解析失败${NC}"
+        return 1
+    fi
+
+    while IFS= read -r line; do
+        [ -n "$line" ] && FETCHED_MODELS+=("$line")
+    done <<< "$ids"
+
+    echo -e " ✔ (${#FETCHED_MODELS[@]} 个模型)${NC}"
+    return 0
+}
+
+# 终端网格选择器：在 4 列 × N 行的网格中用方向键选择模型
+# 用法: select_model_grid "标题" → 结果存入 GRID_SELECTED
+GRID_SELECTED=""
+
+select_model_grid() {
+    local title=$1
+    shift
+    local items=("$@")
+    local count=${#items[@]}
+    GRID_SELECTED=""
+
+    if [ $count -eq 0 ]; then
+        return 1
+    fi
+
+    local cols=4
+    local rows=$(( (count + cols - 1) / cols ))
+    local cursor=0
+    local col_width=0
+
+    # 计算列宽
+    for item in "${items[@]}"; do
+        local len=${#item}
+        [ $len -gt $col_width ] && col_width=$len
+    done
+    col_width=$(( col_width + 4 ))
+    [ $col_width -gt 40 ] && col_width=40
+
+    echo -e "  ${BOLD}${title}${NC}"
+    echo -e "  ${DIM}↑↓←→ 移动 | Enter 确认${NC}"
+    echo ""
+
+    # 占位行
+    for ((r=0; r<rows; r++)); do echo ""; done
+    echo ""
+
+    render_grid() {
+        # 回退到网格顶部
+        for ((r=0; r<rows+1; r++)); do echo -en "\033[A"; done
+        echo -en "\r"
+
+        for ((r=0; r<rows; r++)); do
+            echo -en "  "
+            for ((c=0; c<cols; c++)); do
+                local idx=$((r * cols + c))
+                if [ $idx -ge $count ]; then
+                    printf "%-${col_width}s" ""
+                elif [ $idx -eq $cursor ]; then
+                    printf "${CYAN}▸ %-$((col_width-2))s${NC}" "${items[$idx]:0:$((col_width-4))}"
+                else
+                    printf "  %-$((col_width-2))s" "${items[$idx]:0:$((col_width-4))}"
+                fi
+            done
+            echo ""
+        done
+        echo -e "  ${DIM}共 ${count} 个模型${NC}      "
+    }
+
+    render_grid
+
+    while true; do
+        IFS= read -rsn1 key
+        case "$key" in
+            $'\x1b')
+                read -rsn2 arrow
+                case "$arrow" in
+                    '[A') ((cursor >= cols)) && ((cursor -= cols)) ;;
+                    '[B') ((cursor + cols < count)) && ((cursor += cols)) ;;
+                    '[D') ((cursor > 0)) && ((cursor--)) ;;
+                    '[C') ((cursor < count - 1)) && ((cursor++)) ;;
+                esac
+                render_grid
+                ;;
+            '')
+                GRID_SELECTED="${items[$cursor]}"
+                break
+                ;;
+        esac
+    done
+
+    print_success "已选择: $GRID_SELECTED"
+}
+
+# OpenRouter/硅基流动：先选厂商再选模型
+select_model_by_vendor() {
+    local title=$1
+    shift
+    local items=("$@")
+
+    # 提取厂商前缀
+    declare -A vendors
+    local vendor_list=()
+    for item in "${items[@]}"; do
+        local vendor="${item%%/*}"
+        if [ "$vendor" != "$item" ] && [ -z "${vendors[$vendor]+x}" ]; then
+            vendors[$vendor]=1
+            vendor_list+=("$vendor")
+        fi
+    done
+
+    if [ ${#vendor_list[@]} -le 1 ]; then
+        # 不需要分厂商
+        select_model_grid "$title" "${items[@]}"
+        return
+    fi
+
+    echo -e "  ${BOLD}选择模型厂商：${NC}"
+    for ((i=0; i<${#vendor_list[@]}; i++)); do
+        echo -e "  ${GREEN}$((i+1)))${NC} ${vendor_list[$i]}"
+    done
+    echo ""
+    echo -en "  选择: "
+    read -r vendor_idx
+    vendor_idx=${vendor_idx:-1}
+    ((vendor_idx--))
+    [ $vendor_idx -lt 0 ] && vendor_idx=0
+    [ $vendor_idx -ge ${#vendor_list[@]} ] && vendor_idx=0
+
+    local selected_vendor="${vendor_list[$vendor_idx]}"
+    local filtered=()
+    for item in "${items[@]}"; do
+        if [[ "$item" == "${selected_vendor}/"* ]]; then
+            filtered+=("$item")
+        fi
+    done
+
+    select_model_grid "$title (${selected_vendor})" "${filtered[@]}"
+}
+
 # ==================== Step 2: 模型选择 ====================
 
 step2() {
@@ -493,167 +748,198 @@ step2() {
     print_info "primary = 日常对话，thinking = 深度推理（复杂任务自动切换）"
     echo ""
 
-    echo -e "  ${BOLD}推荐模型组合（${PROVIDER_NAME}）：${NC}"
+    # 尝试从 API 获取模型列表
+    local use_dynamic=0
+    if [ -n "$NEWAPI_API_KEY" ] && [ -n "$NEWAPI_BASE_URL" ]; then
+        if fetch_models; then
+            use_dynamic=1
+        else
+            print_info "无法获取模型列表，将使用推荐组合"
+        fi
+    fi
+    echo ""
 
-    case "$PROVIDER_NAME" in
-        anthropic)
-            echo -e "  ${GREEN}1)${NC} claude-sonnet-4 + claude-opus-4 ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} claude-sonnet-4 + claude-sonnet-4 ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
-                2) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-sonnet-4-20260514" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
-            esac
-            ;;
-        openai)
-            echo -e "  ${GREEN}1)${NC} gpt-4o + o3 ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} gpt-4o + gpt-4o ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
-                2) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="gpt-4o" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
-            esac
-            ;;
-        deepseek)
-            echo -e "  ${GREEN}1)${NC} deepseek-chat + deepseek-reasoner ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} deepseek-chat + deepseek-chat ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
-                2) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-chat" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
-            esac
-            ;;
-        siliconflow)
-            echo -e "  ${GREEN}1)${NC} Qwen/Qwen3-235B-A22B + deepseek-ai/DeepSeek-R1 ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} deepseek-ai/DeepSeek-V3 + deepseek-ai/DeepSeek-R1 ${DIM}（DeepSeek 组合）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
-                2) PRIMARY_MODEL="deepseek-ai/DeepSeek-V3"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
-            esac
-            ;;
-        openrouter)
-            echo -e "  ${GREEN}1)${NC} deepseek/deepseek-chat-v3-0324 + deepseek/deepseek-r1 ${DIM}（推荐，免费额度可用）${NC}"
-            echo -e "  ${GREEN}2)${NC} anthropic/claude-sonnet-4 + anthropic/claude-opus-4 ${DIM}（需充值，效果最好）${NC}"
-            echo -e "  ${GREEN}3)${NC} openai/gpt-4o + openai/o3 ${DIM}（需充值）${NC}"
-            echo -e "  ${GREEN}4)${NC} 自定义模型名称"
-            echo ""
-            print_warn "注意：OpenRouter 免费额度账户无法使用 Anthropic/OpenAI/Google 模型"
-            print_info "如需使用 Claude/GPT，请先在 openrouter.ai 充值后选择对应项"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
-                2) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
-                3) PRIMARY_MODEL="openai/gpt-4o"; THINKING_MODEL="openai/o3" ;;
-                4) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
-            esac
-            ;;
-        kimi)
-            # 参考: miaoxworld/OpenClawInstaller position 20
-            echo -e "  ${GREEN}1)${NC} kimi-k2.5 + kimi-k2.5 ${DIM}（推荐，最新）${NC}"
-            echo -e "  ${GREEN}2)${NC} moonshot-v1-128k + moonshot-v1-128k ${DIM}（经典）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
-                2) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
-            esac
-            ;;
-        zhipu)
-            # 参考: PocketClaw change-api.sh (zhipu/zhipu-pro)
-            echo -e "  ${GREEN}1)${NC} glm-4-plus + glm-4-plus ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} glm-4-flash + glm-4-plus ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
-                2) PRIMARY_MODEL="glm-4-flash"; THINKING_MODEL="glm-4-plus" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
-            esac
-            ;;
-        google)
-            # 参考: miaoxworld/OpenClawInstaller position 20
-            echo -e "  ${GREEN}1)${NC} gemini-2.5-pro + gemini-2.5-pro ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} gemini-2.5-flash + gemini-2.5-pro ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
-                2) PRIMARY_MODEL="gemini-2.5-flash"; THINKING_MODEL="gemini-2.5-pro" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
-            esac
-            ;;
-        xai)
-            # 参考: miaoxworld/OpenClawInstaller position 21 + PocketClaw
-            echo -e "  ${GREEN}1)${NC} grok-3 + grok-3 ${DIM}（推荐）${NC}"
-            echo -e "  ${GREEN}2)${NC} grok-3-mini + grok-3 ${DIM}（省钱）${NC}"
-            echo -e "  ${GREEN}3)${NC} 自定义模型名称"
-            echo ""
-            echo -en "  选择 ${DIM}[1]${NC}: "
-            read -r model_choice
-            model_choice=${model_choice:-1}
-            case $model_choice in
-                1) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
-                2) PRIMARY_MODEL="grok-3-mini"; THINKING_MODEL="grok-3" ;;
-                3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
-                   prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
-                *) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
-            esac
-            ;;
-        *)
-            prompt_input "Primary 模型名称" "$PRIMARY_MODEL" PRIMARY_MODEL
-            prompt_input "Thinking 模型名称" "$THINKING_MODEL" THINKING_MODEL
-            ;;
-    esac
+    if [ $use_dynamic -eq 1 ] && [ ${#FETCHED_MODELS[@]} -gt 0 ]; then
+        # 动态选择模式
+        echo -e "  ${BOLD}推荐模型组合（${PROVIDER_NAME}）：${NC}"
+        echo -e "  ${GREEN}1)${NC} 🔥 从 API 动态选择模型"
+        echo -e "  ${GREEN}2)${NC} 📋 使用推荐组合"
+        echo -e "  ${GREEN}3)${NC} ✏️ 手动输入模型名称"
+        echo ""
+        echo -en "  选择 ${DIM}[1]${NC}: "
+        read -r mode_choice
+        mode_choice=${mode_choice:-1}
+
+        case $mode_choice in
+            1)
+                echo ""
+                # 大型聚合平台先选厂商
+                if [[ "$PROVIDER_NAME" == "openrouter" || "$PROVIDER_NAME" == "siliconflow" ]]; then
+                    echo -e "  ${BOLD}── 选择 Primary 模型 ──${NC}"
+                    select_model_by_vendor "Primary 模型" "${FETCHED_MODELS[@]}"
+                    PRIMARY_MODEL="$GRID_SELECTED"
+                    echo ""
+                    echo -e "  ${BOLD}── 选择 Thinking 模型 ──${NC}"
+                    select_model_by_vendor "Thinking 模型" "${FETCHED_MODELS[@]}"
+                    THINKING_MODEL="$GRID_SELECTED"
+                else
+                    echo -e "  ${BOLD}── 选择 Primary 模型 ──${NC}"
+                    select_model_grid "Primary 模型" "${FETCHED_MODELS[@]}"
+                    PRIMARY_MODEL="$GRID_SELECTED"
+                    echo ""
+                    echo -e "  ${BOLD}── 选择 Thinking 模型 ──${NC}"
+                    select_model_grid "Thinking 模型" "${FETCHED_MODELS[@]}"
+                    THINKING_MODEL="$GRID_SELECTED"
+                fi
+                ;;
+            3)
+                prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL
+                ;;
+            *)
+                # 回退到推荐组合
+                use_dynamic=0
+                ;;
+        esac
+    fi
+
+    # 推荐组合模式（当动态获取失败或用户选择推荐时）
+    if [ $use_dynamic -eq 0 ] || [ -z "$PRIMARY_MODEL" ]; then
+        echo -e "  ${BOLD}推荐模型组合（${PROVIDER_NAME}）：${NC}"
+        case "$PROVIDER_NAME" in
+            anthropic)
+                echo -e "  ${GREEN}1)${NC} claude-sonnet-4 + claude-opus-4 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} claude-sonnet-4 + claude-sonnet-4 ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
+                    2) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-sonnet-4-20260514" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="claude-sonnet-4-20260514"; THINKING_MODEL="claude-opus-4-20260514" ;;
+                esac ;;
+            openai)
+                echo -e "  ${GREEN}1)${NC} gpt-4o + o3 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} gpt-4o + gpt-4o ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
+                    2) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="gpt-4o" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="gpt-4o"; THINKING_MODEL="o3" ;;
+                esac ;;
+            deepseek)
+                echo -e "  ${GREEN}1)${NC} deepseek-chat + deepseek-reasoner ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} deepseek-chat + deepseek-chat ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
+                    2) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-chat" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="deepseek-chat"; THINKING_MODEL="deepseek-reasoner" ;;
+                esac ;;
+            siliconflow)
+                echo -e "  ${GREEN}1)${NC} Qwen/Qwen3-235B-A22B + deepseek-ai/DeepSeek-R1 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} deepseek-ai/DeepSeek-V3 + deepseek-ai/DeepSeek-R1 ${DIM}（DeepSeek 组合）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+                    2) PRIMARY_MODEL="deepseek-ai/DeepSeek-V3"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="Qwen/Qwen3-235B-A22B"; THINKING_MODEL="deepseek-ai/DeepSeek-R1" ;;
+                esac ;;
+            openrouter)
+                echo -e "  ${GREEN}1)${NC} deepseek/deepseek-chat-v3-0324 + deepseek/deepseek-r1 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} anthropic/claude-sonnet-4 + anthropic/claude-opus-4 ${DIM}（需充值）${NC}"
+                echo -e "  ${GREEN}3)${NC} openai/gpt-4o + openai/o3 ${DIM}（需充值）${NC}"
+                echo -e "  ${GREEN}4)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
+                    2) PRIMARY_MODEL="anthropic/claude-sonnet-4"; THINKING_MODEL="anthropic/claude-opus-4" ;;
+                    3) PRIMARY_MODEL="openai/gpt-4o"; THINKING_MODEL="openai/o3" ;;
+                    4) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="deepseek/deepseek-chat-v3-0324"; THINKING_MODEL="deepseek/deepseek-r1" ;;
+                esac ;;
+            kimi)
+                echo -e "  ${GREEN}1)${NC} kimi-k2.5 + kimi-k2.5 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} moonshot-v1-128k + moonshot-v1-128k ${DIM}（经典）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
+                    2) PRIMARY_MODEL="moonshot-v1-128k"; THINKING_MODEL="moonshot-v1-128k" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="kimi-k2.5"; THINKING_MODEL="kimi-k2.5" ;;
+                esac ;;
+            zhipu)
+                echo -e "  ${GREEN}1)${NC} glm-4-plus + glm-4-plus ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} glm-4-flash + glm-4-plus ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
+                    2) PRIMARY_MODEL="glm-4-flash"; THINKING_MODEL="glm-4-plus" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="glm-4-plus"; THINKING_MODEL="glm-4-plus" ;;
+                esac ;;
+            google)
+                echo -e "  ${GREEN}1)${NC} gemini-2.5-pro + gemini-2.5-pro ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} gemini-2.5-flash + gemini-2.5-pro ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
+                    2) PRIMARY_MODEL="gemini-2.5-flash"; THINKING_MODEL="gemini-2.5-pro" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="gemini-2.5-pro"; THINKING_MODEL="gemini-2.5-pro" ;;
+                esac ;;
+            xai)
+                echo -e "  ${GREEN}1)${NC} grok-3 + grok-3 ${DIM}（推荐）${NC}"
+                echo -e "  ${GREEN}2)${NC} grok-3-mini + grok-3 ${DIM}（省钱）${NC}"
+                echo -e "  ${GREEN}3)${NC} 自定义模型名称"
+                echo ""
+                echo -en "  选择 ${DIM}[1]${NC}: "
+                read -r model_choice; model_choice=${model_choice:-1}
+                case $model_choice in
+                    1) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
+                    2) PRIMARY_MODEL="grok-3-mini"; THINKING_MODEL="grok-3" ;;
+                    3) prompt_input "Primary 模型" "$PRIMARY_MODEL" PRIMARY_MODEL
+                       prompt_input "Thinking 模型" "$THINKING_MODEL" THINKING_MODEL ;;
+                    *) PRIMARY_MODEL="grok-3"; THINKING_MODEL="grok-3" ;;
+                esac ;;
+            *)
+                prompt_input "Primary 模型名称" "$PRIMARY_MODEL" PRIMARY_MODEL
+                prompt_input "Thinking 模型名称" "$THINKING_MODEL" THINKING_MODEL ;;
+        esac
+    fi
 
     echo ""
     print_success "Primary: $PRIMARY_MODEL"
@@ -673,125 +959,124 @@ step2() {
 
 step3() {
     print_header
-    print_step 3 "功能与 Skills 配置"
+    print_step 3 "功能、通讯频道与 Skills"
 
-    print_info "以下为默认安装组件和可选 Skills。空格键切换，a 全选/全不选，Enter 确认。"
+    print_info "空格键切换选项，a 全选/全不选，Enter 确认。"
     echo ""
 
-    # 硬编码微信和浏览器为必选
-    SETUP_WECHAT="yes"
-    SHARE_CHROME="yes"
+    # 构建选项列表：通讯频道 + 浏览器(仅 full 模式) + Skills + 镜像
+    local ITEM_IDS=()
+    local ITEM_LABELS=()
+    local ITEM_SELECTED=()
 
-    # 可选 skills + 镜像
-    SKILL_IDS=("summarize" "openclaw-cost-tracker" "docker-mirror")
-    SKILL_LABELS=("📝 长文摘要 (summarize)" "💰 成本追踪 (openclaw-cost-tracker)" "🌏 国内 Docker 镜像加速 (DaoCloud/网易)")
-    # Linux 默认开启镜像，macOS 默认关闭
-    local mirror_default=0
-    if [ "$(uname -s)" = "Linux" ]; then
-        mirror_default=1
+    # 通讯频道
+    ITEM_IDS+=("wechat");      ITEM_LABELS+=("📱 微信 (openclaw-weixin)");           ITEM_SELECTED+=($( [ "$SETUP_WECHAT" = "yes" ] && echo 1 || echo 0 ))
+    ITEM_IDS+=("dingtalk");    ITEM_LABELS+=("🔷 钉钉 (DingTalk)");                  ITEM_SELECTED+=($( [ "$SETUP_DINGTALK" = "yes" ] && echo 1 || echo 0 ))
+    ITEM_IDS+=("telegram");    ITEM_LABELS+=("✈️  Telegram");                         ITEM_SELECTED+=($( [ "$SETUP_TELEGRAM" = "yes" ] && echo 1 || echo 0 ))
+    ITEM_IDS+=("feishu");      ITEM_LABELS+=("🔵 飞书 (Feishu/Lark)");               ITEM_SELECTED+=($( [ "$SETUP_FEISHU" = "yes" ] && echo 1 || echo 0 ))
+    ITEM_IDS+=("qq");          ITEM_LABELS+=("🐧 QQ");                                ITEM_SELECTED+=($( [ "$SETUP_QQ" = "yes" ] && echo 1 || echo 0 ))
+    ITEM_IDS+=("custom-ch");   ITEM_LABELS+=("🔧 自定义 Webhook 频道");               ITEM_SELECTED+=($( [ "$SETUP_CUSTOM_CHANNEL" = "yes" ] && echo 1 || echo 0 ))
+
+    # 浏览器（仅 full 模式显示）
+    if [ "$INSTALL_MODE" = "full" ]; then
+        ITEM_IDS+=("browser");   ITEM_LABELS+=("🌐 独立浏览器 (Sidecar Chrome)");    ITEM_SELECTED+=($( [ "$SHARE_CHROME" = "yes" ] && echo 1 || echo 0 ))
     fi
-    if [ "$USE_MIRROR" = "yes" ]; then
-        mirror_default=1
+
+    # Skills
+    ITEM_IDS+=("summarize");               ITEM_LABELS+=("📝 长文摘要 (summarize)");                    ITEM_SELECTED+=(1)
+    ITEM_IDS+=("openclaw-cost-tracker");   ITEM_LABELS+=("💰 成本追踪 (openclaw-cost-tracker)");        ITEM_SELECTED+=(1)
+
+    # 镜像加速（仅 full 模式且 Linux）
+    if [ "$INSTALL_MODE" = "full" ]; then
+        local mirror_default=0
+        [ "$(uname -s)" = "Linux" ] && mirror_default=1
+        [ "$USE_MIRROR" = "yes" ] && mirror_default=1
+        ITEM_IDS+=("docker-mirror"); ITEM_LABELS+=("🌏 国内 Docker 镜像加速"); ITEM_SELECTED+=($mirror_default)
     fi
-    SKILL_SELECTED=(1 1 $mirror_default)
 
-    local num_locked=2
-    local num_skills=${#SKILL_IDS[@]}
-    local total_items=$((num_locked + num_skills))
-    local cursor=$num_locked  # 光标从第一个可选项开始
+    local num_items=${#ITEM_IDS[@]}
+    local cursor=0
 
-    # 渲染列表
     render_menu() {
-        # 移动光标回到菜单顶部
-        for ((i=0; i<total_items+1; i++)); do
-            echo -en "\033[A"
-        done
+        for ((i=0; i<num_items+1; i++)); do echo -en "\033[A"; done
         echo -en "\r"
-
-        # 锁定项：微信
-        echo -e "  ${GREEN}[✔]${NC} 📱 个人微信 (openclaw-weixin)  ${DIM}🔒 默认${NC}                "
-        # 锁定项：浏览器
-        echo -e "  ${GREEN}[✔]${NC} 🌐 独立浏览器 (Sidecar Chrome)  ${DIM}🔒 默认${NC}                "
-
-        # 可选 skills
-        for ((i=0; i<num_skills; i++)); do
-            local idx=$((num_locked + i))
+        for ((i=0; i<num_items; i++)); do
             local prefix="  "
-            if [ $idx -eq $cursor ]; then
-                prefix="${CYAN}▸ ${NC}"
-            fi
-            if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
-                echo -e "${prefix}${GREEN}[✔]${NC} ${SKILL_LABELS[$i]}                    "
+            [ $i -eq $cursor ] && prefix="${CYAN}▸ ${NC}"
+            if [ ${ITEM_SELECTED[$i]} -eq 1 ]; then
+                echo -e "${prefix}${GREEN}[✔]${NC} ${ITEM_LABELS[$i]}                    "
             else
-                echo -e "${prefix}${DIM}[ ]${NC} ${SKILL_LABELS[$i]}                    "
+                echo -e "${prefix}${DIM}[ ]${NC} ${ITEM_LABELS[$i]}                    "
             fi
         done
         echo -e "  ${DIM}↑↓ 移动 | 空格 切换 | a 全选/全不选 | Enter 确认${NC}     "
     }
 
-    # 初始渲染（先打空行占位）
-    for ((i=0; i<total_items+1; i++)); do echo ""; done
+    for ((i=0; i<num_items+1; i++)); do echo ""; done
     render_menu
 
-    # 读取按键
     while true; do
         IFS= read -rsn1 key
         case "$key" in
-            $'\x1b')  # 方向键
+            $'\x1b')
                 read -rsn2 arrow
                 case "$arrow" in
-                    '[A') ((cursor > num_locked)) && ((cursor--)) ;;  # 上（不能进入锁定区）
-                    '[B') ((cursor < total_items-1)) && ((cursor++)) ;;  # 下
+                    '[A') ((cursor > 0)) && ((cursor--)) ;;
+                    '[B') ((cursor < num_items-1)) && ((cursor++)) ;;
                 esac
-                render_menu
-                ;;
-            ' ')  # 空格：切换当前可选项
-                local si=$((cursor - num_locked))
-                if [ $si -ge 0 ] && [ $si -lt $num_skills ]; then
-                    if [ ${SKILL_SELECTED[$si]} -eq 1 ]; then
-                        SKILL_SELECTED[$si]=0
-                    else
-                        SKILL_SELECTED[$si]=1
-                    fi
-                fi
-                render_menu
-                ;;
-            'a'|'A')  # 全选/全不选（仅影响可选 skills）
+                render_menu ;;
+            ' ')
+                if [ ${ITEM_SELECTED[$cursor]} -eq 1 ]; then ITEM_SELECTED[$cursor]=0
+                else ITEM_SELECTED[$cursor]=1; fi
+                render_menu ;;
+            'a'|'A')
                 local all_on=1
-                for ((i=0; i<num_skills; i++)); do
-                    [ ${SKILL_SELECTED[$i]} -eq 0 ] && all_on=0
-                done
-                local new_val=1
-                [ $all_on -eq 1 ] && new_val=0
-                for ((i=0; i<num_skills; i++)); do
-                    SKILL_SELECTED[$i]=$new_val
-                done
-                render_menu
-                ;;
-            '')  # Enter：确认
-                break
-                ;;
+                for ((i=0; i<num_items; i++)); do [ ${ITEM_SELECTED[$i]} -eq 0 ] && all_on=0; done
+                local nv=1; [ $all_on -eq 1 ] && nv=0
+                for ((i=0; i<num_items; i++)); do ITEM_SELECTED[$i]=$nv; done
+                render_menu ;;
+            '') break ;;
         esac
     done
 
-    # 收集选中的 skills（排除镜像项）
+    # 收集选择结果
+    SETUP_WECHAT="no"; SETUP_DINGTALK="no"; SETUP_TELEGRAM="no"
+    SETUP_FEISHU="no"; SETUP_QQ="no"; SETUP_CUSTOM_CHANNEL="no"
+    SHARE_CHROME="no"; USE_MIRROR="no"
     SELECTED_SKILLS=()
-    USE_MIRROR="no"
-    for ((i=0; i<num_skills; i++)); do
-        if [ ${SKILL_SELECTED[$i]} -eq 1 ]; then
-            if [ "${SKILL_IDS[$i]}" = "docker-mirror" ]; then
-                USE_MIRROR="yes"
-            else
-                SELECTED_SKILLS+=("${SKILL_IDS[$i]}:${SKILL_LABELS[$i]}")
-            fi
-        fi
+
+    for ((i=0; i<num_items; i++)); do
+        [ ${ITEM_SELECTED[$i]} -eq 0 ] && continue
+        case "${ITEM_IDS[$i]}" in
+            wechat)       SETUP_WECHAT="yes" ;;
+            dingtalk)     SETUP_DINGTALK="yes" ;;
+            telegram)     SETUP_TELEGRAM="yes" ;;
+            feishu)       SETUP_FEISHU="yes" ;;
+            qq)           SETUP_QQ="yes" ;;
+            custom-ch)    SETUP_CUSTOM_CHANNEL="yes" ;;
+            browser)      SHARE_CHROME="yes" ;;
+            docker-mirror) USE_MIRROR="yes" ;;
+            *)            SELECTED_SKILLS+=("${ITEM_IDS[$i]}:${ITEM_LABELS[$i]}") ;;
+        esac
     done
 
-    local total_selected=$((2 + ${#SELECTED_SKILLS[@]}))
-    if [ "$USE_MIRROR" = "yes" ]; then
-        ((total_selected++))
+    local total_selected=0
+    for ((i=0; i<num_items; i++)); do [ ${ITEM_SELECTED[$i]} -eq 1 ] && ((total_selected++)); done
+    print_success "已选择 ${total_selected} 项"
+
+    # 自定义频道额外信息收集
+    if [ "$SETUP_CUSTOM_CHANNEL" = "yes" ]; then
+        echo ""
+        echo -e "  ${BOLD}自定义频道配置：${NC}"
+        prompt_input "Webhook URL" "$CUSTOM_CHANNEL_WEBHOOK_URL" CUSTOM_CHANNEL_WEBHOOK_URL
+        prompt_secret "Token / Secret" "$CUSTOM_CHANNEL_TOKEN" CUSTOM_CHANNEL_TOKEN
+        echo -e "  ${BOLD}消息格式：${NC}"
+        echo -e "  ${GREEN}1)${NC} JSON  ${GREEN}2)${NC} Text  ${GREEN}3)${NC} Markdown"
+        echo -en "  选择 ${DIM}[1]${NC}: "
+        read -r fmt; fmt=${fmt:-1}
+        case $fmt in 2) CUSTOM_CHANNEL_MSG_FORMAT="text";; 3) CUSTOM_CHANNEL_MSG_FORMAT="markdown";; *) CUSTOM_CHANNEL_MSG_FORMAT="json";; esac
+        print_success "自定义频道已配置"
     fi
-    print_success "已选择 ${total_selected} 项（含 2 项默认组件）"
 
     echo ""
     echo -e "  ${DIM}按 Enter 继续，输入 b 返回上一步${NC}"
@@ -802,6 +1087,10 @@ step3() {
         return
     fi
 }
+
+
+
+
 
 # ==================== Step 4: 用户信息 ====================
 
@@ -845,27 +1134,30 @@ step5() {
     echo -e "    Primary:   ${BOLD}$PRIMARY_MODEL${NC}"
     echo -e "    Thinking:  ${BOLD}$THINKING_MODEL${NC}"
     echo ""
+    echo -e "  ${CYAN}安装模式${NC}"
+    echo -e "    模式:      ${BOLD}${INSTALL_MODE}${NC}"
+    echo ""
+    echo -e "  ${CYAN}通讯频道${NC}"
+    [ "$SETUP_WECHAT" = "yes" ]    && echo -e "    ${GREEN}✔${NC} 微信"
+    [ "$SETUP_DINGTALK" = "yes" ]  && echo -e "    ${GREEN}✔${NC} 钉钉"
+    [ "$SETUP_TELEGRAM" = "yes" ]  && echo -e "    ${GREEN}✔${NC} Telegram"
+    [ "$SETUP_FEISHU" = "yes" ]    && echo -e "    ${GREEN}✔${NC} 飞书"
+    [ "$SETUP_QQ" = "yes" ]        && echo -e "    ${GREEN}✔${NC} QQ"
+    [ "$SETUP_CUSTOM_CHANNEL" = "yes" ] && echo -e "    ${GREEN}✔${NC} 自定义 ($CUSTOM_CHANNEL_WEBHOOK_URL)"
+    local any_ch="$SETUP_WECHAT$SETUP_DINGTALK$SETUP_TELEGRAM$SETUP_FEISHU$SETUP_QQ$SETUP_CUSTOM_CHANNEL"
+    [[ "$any_ch" != *yes* ]] && echo -e "    ${DIM}未选择${NC}"
+    echo ""
     echo -e "  ${CYAN}可选功能${NC}"
-    if [ "$SETUP_WECHAT" = "yes" ]; then
-        echo -e "    微信:      ${GREEN}✔ 安装后扫码授权${NC}"
-    else
-        echo -e "    微信:      ${DIM}未配置${NC}"
-    fi
     if [ "$SHARE_CHROME" = "yes" ]; then
         echo -e "    浏览器:    ${GREEN}✔ Sidecar 独立容器${NC}"
     else
         echo -e "    浏览器:    ${DIM}未配置${NC}"
     fi
-    if [ "$USE_MIRROR" = "yes" ]; then
-        echo -e "    镜像源:    ${GREEN}✔ 国内加速${NC}"
-    else
-        echo -e "    镜像源:    ${DIM}标准 Docker Hub${NC}"
-    fi
+    [ "$USE_MIRROR" = "yes" ] && echo -e "    镜像源:    ${GREEN}✔ 国内加速${NC}"
     echo -e "  ${CYAN}Skills${NC}"
     if [ ${#SELECTED_SKILLS[@]} -gt 0 ]; then
         for item in "${SELECTED_SKILLS[@]}"; do
-            local sdesc="${item##*:}"
-            echo -e "    ${GREEN}✔${NC} ${sdesc}"
+            echo -e "    ${GREEN}✔${NC} ${item##*:}"
         done
     else
         echo -e "    ${DIM}无额外 Skills${NC}"
@@ -882,8 +1174,10 @@ step5() {
     echo -e "    ${GREEN}Enter${NC}  确认并开始安装"
     echo -e "    ${YELLOW}1${NC}      修改模型供应商"
     echo -e "    ${YELLOW}2${NC}      修改模型选择"
-    echo -e "    ${YELLOW}3${NC}      修改可选功能"
+    echo -e "    ${YELLOW}3${NC}      修改功能与频道"
     echo -e "    ${YELLOW}4${NC}      修改用户信息"
+    echo -e "    ${YELLOW}5${NC}      🔄 一键升级到最新版"
+    echo -e "    ${YELLOW}6${NC}      🔧 一键修复 / 导出日志"
     echo -e "    ${RED}q${NC}      保存配置但不安装"
     echo ""
     echo -en "  你的选择: "
@@ -894,6 +1188,25 @@ step5() {
         2) step2; step5; return ;;
         3) step3; step5; return ;;
         4) step4; step5; return ;;
+        5)
+            save_env
+            echo ""
+            if [ -f upgrade.sh ]; then
+                bash upgrade.sh
+            else
+                print_error "upgrade.sh 未找到"
+            fi
+            exit 0
+            ;;
+        6)
+            echo ""
+            if [ -f repair.sh ]; then
+                bash repair.sh
+            else
+                print_error "repair.sh 未找到"
+            fi
+            exit 0
+            ;;
         q|Q)
             save_env
             echo ""
@@ -914,6 +1227,7 @@ save_env() {
     cat > .env << EOF
 # OpenClaw 配置（由 setup.sh 生成于 $(date '+%Y-%m-%d %H:%M:%S')）
 
+INSTALL_MODE=$INSTALL_MODE
 PROVIDER_NAME=$PROVIDER_NAME
 NEWAPI_BASE_URL=$NEWAPI_BASE_URL
 NEWAPI_API_KEY=$NEWAPI_API_KEY
@@ -921,6 +1235,14 @@ API_FORMAT=$API_FORMAT
 PRIMARY_MODEL=$PRIMARY_MODEL
 THINKING_MODEL=$THINKING_MODEL
 SETUP_WECHAT=$SETUP_WECHAT
+SETUP_DINGTALK=$SETUP_DINGTALK
+SETUP_TELEGRAM=$SETUP_TELEGRAM
+SETUP_FEISHU=$SETUP_FEISHU
+SETUP_QQ=$SETUP_QQ
+SETUP_CUSTOM_CHANNEL=$SETUP_CUSTOM_CHANNEL
+CUSTOM_CHANNEL_WEBHOOK_URL=$CUSTOM_CHANNEL_WEBHOOK_URL
+CUSTOM_CHANNEL_TOKEN=$CUSTOM_CHANNEL_TOKEN
+CUSTOM_CHANNEL_MSG_FORMAT=$CUSTOM_CHANNEL_MSG_FORMAT
 SHARE_CHROME=$SHARE_CHROME
 USE_MIRROR=$USE_MIRROR
 TZ=$TZ
@@ -1412,52 +1734,117 @@ MIRRORYML
     print_success "文件读写（内置 File System）"
 
 
-    # Step 5: 微信
+    # Step 5: 通讯频道
     echo ""
     echo -e "  ${BLUE}[5/7]${NC} 配置通讯频道..."
-    if [ "$SETUP_WECHAT" = "yes" ]; then
-        # 检查是否已安装
-        if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
-            print_success "微信插件 openclaw-weixin 已存在，跳过安装"
-        else
-            echo -en "    ${DIM}安装微信插件（约 1-2 分钟）..."
-            docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install 2>/dev/null
-            # npx 退出码可能非零（QR登录步骤失败），但插件实际已安装，所以检查目录而非退出码
-            echo -e " ${NC}"
-            if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
-                print_success "微信插件 openclaw-weixin 安装成功"
-            else
-                print_warn "微信插件安装失败（可手动：docker exec openclaw-main npx -y @tencent-weixin/openclaw-weixin-cli@latest install）"
-            fi
-        fi
-        print_info "微信需扫码授权（见下方说明）"
 
-        # 动态注入 plugins.allow（仅在插件实际存在后才声明，避免 stale config 警告）
-        if docker exec openclaw-main test -d /home/node/.openclaw/extensions/openclaw-weixin 2>/dev/null; then
-            docker exec openclaw-main python3 -c "
+    # 通用频道安装函数（隐藏非进度日志）
+    install_channel() {
+        local name=$1 label=$2 install_cmd=$3 check_dir=$4 plugin_name=$5
+        echo -en "    ${DIM}安装 ${label}..."
+        if docker exec openclaw-main test -d "$check_dir" 2>/dev/null; then
+            echo -e "${NC}"
+            print_success "${label} 已存在，跳过"
+            return 0
+        fi
+        # 执行安装命令，隐藏非进度日志
+        eval "docker exec openclaw-main $install_cmd" 2>/dev/null 1>/dev/null
+        echo -e " ${NC}"
+        if docker exec openclaw-main test -d "$check_dir" 2>/dev/null; then
+            print_success "${label} 安装成功"
+            # 注入 plugins.allow
+            if [ -n "$plugin_name" ]; then
+                docker exec openclaw-main python3 -c "
 import json, pathlib
 p = pathlib.Path('/home/node/.openclaw/openclaw.json')
 cfg = json.loads(p.read_text())
 allow = cfg.setdefault('plugins', {}).setdefault('allow', [])
-if 'openclaw-weixin' not in allow:
-    allow.append('openclaw-weixin')
+if '${plugin_name}' not in allow:
+    allow.append('${plugin_name}')
     p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
 " 2>/dev/null
-            print_success "已将 openclaw-weixin 注入 plugins.allow"
+            fi
+            return 0
+        else
+            print_warn "${label} 安装跳过（可手动安装）"
+            return 1
         fi
+    }
 
-        # 自动修补微信插件的 block streaming 行为：
-        # 官方插件默认 disableBlockStreaming: false，会导致流式回复被切成多条"累积式"消息，
-        # 看起来像是发了重复的内容。自动改为 true，让回复完整生成后再一次性发送。
+    # 微信
+    if [ "$SETUP_WECHAT" = "yes" ]; then
+        install_channel "wechat" "📱 微信 (openclaw-weixin)" \
+            "npx -y @tencent-weixin/openclaw-weixin-cli@latest install" \
+            "/home/node/.openclaw/extensions/openclaw-weixin" \
+            "openclaw-weixin"
+        # 修补 block streaming
         local weixin_pm="/home/node/.openclaw/extensions/openclaw-weixin/src/messaging/process-message.ts"
         if docker exec openclaw-main grep -q 'disableBlockStreaming: false' "$weixin_pm" 2>/dev/null; then
-            docker exec openclaw-main sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm"
-            print_success "已自动修补微信插件：禁用 block streaming 防止重复消息"
-        else
-            print_info "微信插件 block streaming 已为最优配置，无需修补"
+            docker exec openclaw-main sed -i 's/disableBlockStreaming: false/disableBlockStreaming: true/' "$weixin_pm" 2>/dev/null
+            print_success "已修补微信插件 block streaming"
         fi
-    else
-        print_info "微信未配置，已跳过"
+        print_info "微信需扫码授权（见下方说明）"
+    fi
+
+    # 钉钉
+    if [ "$SETUP_DINGTALK" = "yes" ]; then
+        install_channel "dingtalk" "🔷 钉钉 (DingTalk)" \
+            "openclaw channels add dingtalk" \
+            "/home/node/.openclaw/extensions/openclaw-dingtalk" \
+            "openclaw-dingtalk"
+        print_info "钉钉需配置企业应用 App ID/Secret（见文档）"
+    fi
+
+    # Telegram
+    if [ "$SETUP_TELEGRAM" = "yes" ]; then
+        echo -en "    ${DIM}配置 Telegram..."
+        # Telegram 为内置频道，通过 openclaw channels add 配置
+        docker exec openclaw-main openclaw channels add telegram 2>/dev/null 1>/dev/null || true
+        echo -e " ${NC}"
+        print_success "✈️ Telegram 已配置"
+        print_info "Telegram 需 Bot Token（从 @BotFather 获取）"
+    fi
+
+    # 飞书
+    if [ "$SETUP_FEISHU" = "yes" ]; then
+        install_channel "feishu" "🔵 飞书 (Feishu/Lark)" \
+            "openclaw plugins install @openclaw/feishu" \
+            "/home/node/.openclaw/extensions/openclaw-feishu" \
+            "openclaw-feishu"
+        print_info "飞书需配置企业应用 App ID/Secret"
+    fi
+
+    # QQ
+    if [ "$SETUP_QQ" = "yes" ]; then
+        install_channel "qq" "🐧 QQ" \
+            "openclaw channels add qq" \
+            "/home/node/.openclaw/extensions/openclaw-qq" \
+            "openclaw-qq"
+        print_info "QQ 需配置 Bot 应用凭证"
+    fi
+
+    # 自定义频道
+    if [ "$SETUP_CUSTOM_CHANNEL" = "yes" ]; then
+        echo -en "    ${DIM}配置自定义 Webhook 频道..."
+        # 将自定义频道信息写入容器内配置
+        docker exec openclaw-main python3 -c "
+import json, pathlib
+p = pathlib.Path('/home/node/.openclaw/openclaw.json')
+cfg = json.loads(p.read_text())
+cfg.setdefault('channels', {})['custom-webhook'] = {
+    'url': '${CUSTOM_CHANNEL_WEBHOOK_URL}',
+    'token': '${CUSTOM_CHANNEL_TOKEN}',
+    'format': '${CUSTOM_CHANNEL_MSG_FORMAT}'
+}
+p.write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
+" 2>/dev/null
+        echo -e " ${NC}"
+        print_success "🔧 自定义 Webhook 频道已配置"
+    fi
+
+    local any_channel="$SETUP_WECHAT$SETUP_DINGTALK$SETUP_TELEGRAM$SETUP_FEISHU$SETUP_QQ$SETUP_CUSTOM_CHANNEL"
+    if [[ "$any_channel" != *yes* ]]; then
+        print_info "未选择通讯频道，跳过"
     fi
 
     # Step 6: 清理
@@ -1520,10 +1907,35 @@ for arg in "$@"; do
 done
 
 if [ "$HAS_EXISTING_CONFIG" = "yes" ]; then
-    # 已有完整配置 → 直接跳到确认页，用户可从确认页选择修改
+    if [ -n "$INSTALL_MODE" ]; then
+        # 已有完整配置且已选版本 → 提供跳过版本选择的选项
+        echo -e "  ${BOLD}当前安装版本: ${CYAN}${INSTALL_MODE}${NC}"
+        echo -en "  ${DIM}按 Enter 保持当前版本，输入 c 重新选择版本${NC}: "
+        read -r ver_action
+        if [[ "$ver_action" = "c" || "$ver_action" = "C" ]]; then
+            step0
+        fi
+    else
+        step0
+    fi
     step5
 else
-    # 首次安装 → 完整走向导
+    # 首次安装 → 完整走向导（版本选择在 Docker 检查之前）
+    step0
+
+    # 满血版才需要 Docker
+    if [ "$INSTALL_MODE" = "full" ]; then
+        # Docker 环境检查已在上面完成
+        true
+    else
+        # 简易版检查 Node.js
+        if ! command -v node &>/dev/null; then
+            print_error "简易版需要 Node.js 22+，请先安装: https://nodejs.org/"
+            exit 1
+        fi
+        print_success "Node.js $(node --version)"
+    fi
+
     step1
     step2
     step3

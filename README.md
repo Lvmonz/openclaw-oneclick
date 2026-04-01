@@ -18,7 +18,9 @@
 
 ```
 openclaw-oneclick/
-├── setup.sh                    # 主交互式安装向导
+├── setup.sh                    # 主交互式安装向导 (v2.0)
+├── upgrade.sh                  # 一键升级脚本（版本感知）
+├── repair.sh                   # 一键修复 / 诊断 / 日志导出
 ├── factory-reset.sh            # 一键洗脑 — 出厂重置脚本
 ├── .env.example                # 环境变量模板
 ├── docker-compose.yml          # 核心容器编排（大脑主容器）
@@ -34,8 +36,8 @@ openclaw-oneclick/
 
 ### 前置要求
 
-- Docker Desktop（[下载地址](https://docker.com/get-started)）
-- 至少预留 **2GB 空闲内存** 给 Sidecar 浏览器容器（仅在启用浏览器功能时需要）
+- **满血版 (full)**：Docker Desktop（[下载地址](https://docker.com/get-started)）+ 至少 2GB 空闲内存
+- **简易版 (lite)**：Node.js 22+（[下载地址](https://nodejs.org/)），无需 Docker
 
 ### 2 步安装
 
@@ -44,13 +46,13 @@ openclaw-oneclick/
 git clone https://github.com/Lvmonz/openclaw-oneclick.git
 cd openclaw-oneclick
 
-# 2. 运行交互式安装向导
-chmod +x setup.sh
+# 2. 运行交互式安装向导（会先让你选择简易版/满血版）
+chmod +x setup.sh upgrade.sh repair.sh
 ./setup.sh
 ```
 
-> 💡 无需手动编辑 `.env`——向导会带你走完所有配置流程。
-> 💡 **重装说明**：普通的 `./setup.sh` 会保留所有数据和插件；`./setup.sh --clean` 会清空核心数据，但会**询问你是否保留浏览器的登录态**。
+> 💡 安装向导第一步会让你选择版本：⚡ **简易版** (无 Docker，本地环境) 或 🚀 **满血版** (Docker 容器化)。
+> 💡 已有配置时再次运行会默认上次版本，可直接修改参数。
 
 ## 🏗️ 架构说明
 
@@ -105,15 +107,46 @@ docker compose -f docker-compose.yml -f docker-compose.browser.yml up -d
 # 停止
 docker compose down
 
-# 神级操作：实时围观 AI 视角的网页动作
-# 在本地浏览器打开: http://127.0.0.1:9222 然后点击 target 即可看到实时回放！
-
-# 升级到官方最新版镜像并拉起
-docker compose pull && docker compose up -d
-
 # 查看核心日志
 docker logs openclaw-main --tail 100 -f
 ```
+
+### 🔄 一键升级
+
+```bash
+# 独立脚本（推荐）
+bash upgrade.sh
+
+# 或在安装向导确认页选择 "5" 一键升级
+./setup.sh
+```
+
+升级会自动根据安装模式（lite/full）拉取最新镜像或 npm 包，保留所有数据和配置。
+
+### 🔧 一键修复 / 诊断
+
+```bash
+# 独立脚本
+bash repair.sh
+
+# 或在安装向导确认页选择 "6" 一键修复
+./setup.sh
+```
+
+修复工具会自动检测：文件完整性、Docker/Node 环境、容器健康、端口冲突、数据卷状态、磁盘空间等，并尝试自动修复。支持导出诊断日志（macOS 支持文件选择器）。
+
+### 📱 多通讯频道
+
+安装向导支持同时选择多个通讯频道：
+
+| 频道 | 安装方式 | 需要配置 |
+|------|----------|----------|
+| 📱 微信 | `openclaw-weixin-cli` | 扫码授权 |
+| 🔷 钉钉 | `openclaw channels add` | 企业应用 App ID/Secret |
+| ✈️ Telegram | 内置频道 | Bot Token (@BotFather) |
+| 🔵 飞书 | `@openclaw/feishu` 插件 | 企业应用 App ID/Secret |
+| 🐧 QQ | `openclaw channels add` | Bot 应用凭证 |
+| 🔧 自定义 | Webhook 配置 | URL + Token + 消息格式 |
 
 ### 🧹 一键洗脑 / 出厂重置
 
