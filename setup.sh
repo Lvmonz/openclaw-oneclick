@@ -184,6 +184,13 @@ install_node() {
             echo -e "\n  ${DIM}通过 Homebrew 安装 Node.js 22...${NC}"
             brew install node@22
             export PATH="/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin:$PATH"
+            # 记录在用户的 zshrc 或 bashrc，确保关掉当前终端后依然可用
+            if [ -n "$ZSH_VERSION" ] || [ -f ~/.zshrc ]; then
+                echo 'export PATH="/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin:$PATH"' >> ~/.zshrc
+            fi
+            if [ -n "$BASH_VERSION" ] || [ -f ~/.bashrc ]; then
+                echo 'export PATH="/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin:$PATH"' >> ~/.bashrc
+            fi
         else
             echo -e " ✖${NC}"
             print_error "未检测到 Homebrew。请手动安装 Node.js 22: https://nodejs.org/"
