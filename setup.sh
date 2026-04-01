@@ -1338,13 +1338,7 @@ do_install() {
     save_env
     print_success "配置已保存到 .env"
 
-    # Step 0: API 连通性预检
-    precheck_api "$NEWAPI_BASE_URL" "$NEWAPI_API_KEY" "$PROVIDER_NAME"
-    local precheck_result=$?
-    if [ $precheck_result -eq 2 ]; then
-        print_info "安装已取消，请修正 API Key 后重新运行 ./setup.sh"
-        exit 0
-    fi
+    # API 连通性已在模型选择步骤中验证，此处不再重复检测
 
     # Step 1: 准备配置文件（写到临时目录，稍后注入容器）
     echo ""
@@ -1655,29 +1649,43 @@ MIRRORYML
         print_info "已生成镜像加速 override (docker-compose.mirror.yml)"
     fi
 
-    # 拉取镜像（静默后台拉取 + 旋转动画）
+    # 拉取镜像（后台拉取 + 实时下载进度）
     local pull_ok=0
-    for attempt in 1 2 3; do
-        echo -en "    ${DIM}拉取中 (第 ${attempt}/3 次) " > /dev/tty
+    local pull_log
+    pull_log=$(mktemp)
 
-        # 后台执行 pull，完全隐藏层级日志
-        compose_cmd pull --quiet > /dev/null 2>&1 &
+    for attempt in 1 2 3; do
+        echo -e "    ${DIM}拉取中 (第 ${attempt}/3 次)...${NC}" > /dev/tty
+
+        # 后台执行 pull，输出写入临时文件以解析进度
+        compose_cmd pull 2>&1 | tee "$pull_log" > /dev/null &
         local pull_pid=$!
 
-        # 旋转动画
+        # 实时解析下载进度
         local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        local spin_idx=0
         while kill -0 $pull_pid 2>/dev/null; do
-            for ((s=0; s<${#spin}; s++)); do
-                echo -en "\r    ${DIM}拉取中 (第 ${attempt}/3 次) ${spin:$s:1} ${NC}" > /dev/tty
-                sleep 0.15
-                kill -0 $pull_pid 2>/dev/null || break
-            done
+            # 从日志中提取最新的 Downloading 行，显示汇总大小
+            local dl_info
+            dl_info=$(grep -oE 'Downloading [0-9]+\.[0-9]+[kKmMgG]B' "$pull_log" 2>/dev/null | tail -1)
+            local pulled_count
+            pulled_count=$(grep -c 'Pull complete\|Already exists\|Download complete' "$pull_log" 2>/dev/null || echo 0)
+            local s_char="${spin:$spin_idx:1}"
+            spin_idx=$(( (spin_idx + 1) % ${#spin} ))
+
+            if [ -n "$dl_info" ]; then
+                printf "\r    ${DIM}%s 下载中... %s | 已完成 %d 层${NC}      " "$s_char" "$dl_info" "$pulled_count" > /dev/tty
+            else
+                printf "\r    ${DIM}%s 准备中... 已完成 %d 层${NC}          " "$s_char" "$pulled_count" > /dev/tty
+            fi
+            sleep 0.3
         done
+
+        # 清除进度行
+        printf "\r%-80s\r" "" > /dev/tty
 
         wait $pull_pid
         local pull_exit=$?
-        echo -en "\r    ${DIM}拉取中 (第 ${attempt}/3 次)   ${NC}" > /dev/tty
-        echo "" > /dev/tty
 
         if [ $pull_exit -eq 0 ]; then
             pull_ok=1
@@ -1688,6 +1696,8 @@ MIRRORYML
             sleep $attempt
         fi
     done
+
+    rm -f "$pull_log"
 
     if [ $pull_ok -eq 1 ]; then
         print_success "镜像已就绪"
