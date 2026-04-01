@@ -625,51 +625,59 @@ select_model_grid() {
         return 1
     fi
 
-    local cols=4
-    local rows=$(( (count + cols - 1) / cols ))
+    # 单列滚动列表（每页显示 15 项）
+    local page_size=15
     local cursor=0
-    local col_width=0
-
-    # 计算列宽
-    for item in "${items[@]}"; do
-        local len=${#item}
-        [ $len -gt $col_width ] && col_width=$len
-    done
-    col_width=$(( col_width + 4 ))
-    [ $col_width -gt 40 ] && col_width=40
+    local scroll_top=0
 
     # 所有交互渲染直接写 /dev/tty，避免 tee 缓冲导致闪烁
     echo -e "  ${BOLD}${title}${NC}" > /dev/tty
-    echo -e "  ${DIM}↑↓←→ 移动 | Enter 确认${NC}" > /dev/tty
+    echo -e "  ${DIM}↑↓ 移动 | Enter 确认 | 共 ${count} 个模型${NC}" > /dev/tty
     echo "" > /dev/tty
+
+    # 计算实际显示行数
+    local visible=$page_size
+    [ $count -lt $visible ] && visible=$count
 
     # 占位行
-    for ((r=0; r<rows; r++)); do echo "" > /dev/tty; done
-    echo "" > /dev/tty
+    for ((i=0; i<visible+1; i++)); do echo "" > /dev/tty; done
 
-    render_grid() {
-        # 回退到网格顶部
-        for ((r=0; r<rows+1; r++)); do echo -en "\033[A" > /dev/tty; done
+    render_list() {
+        # 滚动窗口跟随光标
+        if ((cursor < scroll_top)); then
+            scroll_top=$cursor
+        elif ((cursor >= scroll_top + page_size)); then
+            scroll_top=$((cursor - page_size + 1))
+        fi
+
+        local vis=$page_size
+        [ $count -lt $vis ] && vis=$count
+
+        # 回退
+        for ((i=0; i<vis+1; i++)); do echo -en "\033[A" > /dev/tty; done
         echo -en "\r" > /dev/tty
 
-        for ((r=0; r<rows; r++)); do
-            echo -en "  " > /dev/tty
-            for ((c=0; c<cols; c++)); do
-                local idx=$((r * cols + c))
-                if [ $idx -ge $count ]; then
-                    printf "%-${col_width}s" "" > /dev/tty
-                elif [ $idx -eq $cursor ]; then
-                    printf "${CYAN}▸ %-$((col_width-2))s${NC}" "${items[$idx]:0:$((col_width-4))}" > /dev/tty
-                else
-                    printf "  %-$((col_width-2))s" "${items[$idx]:0:$((col_width-4))}" > /dev/tty
-                fi
-            done
-            echo "" > /dev/tty
+        for ((i=0; i<vis; i++)); do
+            local idx=$((scroll_top + i))
+            if [ $idx -ge $count ]; then
+                printf "  %-60s\n" "" > /dev/tty
+            elif [ $idx -eq $cursor ]; then
+                printf "  ${CYAN}▸ %-58s${NC}\n" "${items[$idx]}" > /dev/tty
+            else
+                printf "    %-58s\n" "${items[$idx]}" > /dev/tty
+            fi
         done
-        echo -e "  ${DIM}共 ${count} 个模型${NC}      " > /dev/tty
+
+        # 滚动指示器
+        if [ $count -gt $page_size ]; then
+            local pct=$(( (scroll_top * 100) / (count - page_size) ))
+            printf "  ${DIM}[%d/%d] ▲▼ 滚动 %d%%${NC}          \n" "$((cursor+1))" "$count" "$pct" > /dev/tty
+        else
+            printf "  ${DIM}[%d/%d]${NC}                        \n" "$((cursor+1))" "$count" > /dev/tty
+        fi
     }
 
-    render_grid
+    render_list
 
     while true; do
         IFS= read -rsn1 key < /dev/tty
@@ -677,12 +685,10 @@ select_model_grid() {
             $'\x1b')
                 read -rsn2 arrow < /dev/tty
                 case "$arrow" in
-                    '[A') ((cursor >= cols)) && ((cursor -= cols)) ;;
-                    '[B') ((cursor + cols < count)) && ((cursor += cols)) ;;
-                    '[D') ((cursor > 0)) && ((cursor--)) ;;
-                    '[C') ((cursor < count - 1)) && ((cursor++)) ;;
+                    '[A') ((cursor > 0)) && ((cursor--)) ;;
+                    '[B') ((cursor < count - 1)) && ((cursor++)) ;;
                 esac
-                render_grid
+                render_list
                 ;;
             '')
                 GRID_SELECTED="${items[$cursor]}"
@@ -956,43 +962,94 @@ step2() {
     fi
 }
 
-# ==================== Step 3: 可选功能 ====================
+# ==================== Step 3: 通讯频道 + 可选功能 ====================
 
 step3() {
     print_header
-    print_step 3 "功能、通讯频道与 Skills"
+    print_step 3 "通讯频道"
 
-    print_info "空格键切换选项，a 全选/全不选，Enter 确认。"
+    # ── Phase A: 通讯频道（N 选 1）──
+    echo -e "  ${BOLD}选择通讯频道（单选）：${NC}"
+    echo ""
+    echo -e "  ${GREEN}1)${NC} 📱 微信 (openclaw-weixin)"
+    echo -e "  ${GREEN}2)${NC} 🔷 钉钉 (DingTalk)"
+    echo -e "  ${GREEN}3)${NC} ✈️  Telegram"
+    echo -e "  ${GREEN}4)${NC} 🔵 飞书 (Feishu/Lark)"
+    echo -e "  ${GREEN}5)${NC} 🐧 QQ"
+    echo -e "  ${GREEN}6)${NC} 🔧 自定义 Webhook"
+    echo -e "  ${GREEN}7)${NC} ${DIM}暂不配置${NC}"
     echo ""
 
-    # 构建选项列表：通讯频道 + 浏览器(仅 full 模式) + Skills + 镜像
+    # 根据当前选择设默认
+    local ch_default="7"
+    [ "$SETUP_WECHAT" = "yes" ] && ch_default="1"
+    [ "$SETUP_DINGTALK" = "yes" ] && ch_default="2"
+    [ "$SETUP_TELEGRAM" = "yes" ] && ch_default="3"
+    [ "$SETUP_FEISHU" = "yes" ] && ch_default="4"
+    [ "$SETUP_QQ" = "yes" ] && ch_default="5"
+    [ "$SETUP_CUSTOM_CHANNEL" = "yes" ] && ch_default="6"
+
+    echo -en "  选择 ${DIM}[${ch_default}]${NC}: "
+    read -r ch_choice
+    ch_choice=${ch_choice:-$ch_default}
+
+    # 重置所有频道
+    SETUP_WECHAT="no"; SETUP_DINGTALK="no"; SETUP_TELEGRAM="no"
+    SETUP_FEISHU="no"; SETUP_QQ="no"; SETUP_CUSTOM_CHANNEL="no"
+
+    case $ch_choice in
+        1) SETUP_WECHAT="yes";    print_success "已选择 📱 微信" ;;
+        2) SETUP_DINGTALK="yes";  print_success "已选择 🔷 钉钉" ;;
+        3) SETUP_TELEGRAM="yes";  print_success "已选择 ✈️  Telegram" ;;
+        4) SETUP_FEISHU="yes";    print_success "已选择 🔵 飞书" ;;
+        5) SETUP_QQ="yes";        print_success "已选择 🐧 QQ" ;;
+        6)
+            SETUP_CUSTOM_CHANNEL="yes"
+            print_success "已选择 🔧 自定义 Webhook"
+            echo ""
+            echo -e "  ${BOLD}自定义频道配置：${NC}"
+            prompt_input "Webhook URL" "$CUSTOM_CHANNEL_WEBHOOK_URL" CUSTOM_CHANNEL_WEBHOOK_URL
+            prompt_secret "Token / Secret" "$CUSTOM_CHANNEL_TOKEN" CUSTOM_CHANNEL_TOKEN
+            echo -e "  ${BOLD}消息格式：${NC}"
+            echo -e "  ${GREEN}1)${NC} JSON  ${GREEN}2)${NC} Text  ${GREEN}3)${NC} Markdown"
+            echo -en "  选择 ${DIM}[1]${NC}: "
+            read -r fmt; fmt=${fmt:-1}
+            case $fmt in 2) CUSTOM_CHANNEL_MSG_FORMAT="text";; 3) CUSTOM_CHANNEL_MSG_FORMAT="markdown";; *) CUSTOM_CHANNEL_MSG_FORMAT="json";; esac
+            print_success "自定义频道已配置"
+            ;;
+        *) print_info "暂不配置通讯频道" ;;
+    esac
+
+    echo ""
+    sleep 1
+
+    # ── Phase B: Skills + 浏览器 + 镜像（多选 checkbox）──
+    print_header
+    print_step 3 "Skills 与可选组件"
+
+    print_info "空格键切换，a 全选/全不选，Enter 确认。"
+    echo ""
+
     local ITEM_IDS=()
     local ITEM_LABELS=()
     local ITEM_SELECTED=()
 
-    # 通讯频道
-    ITEM_IDS+=("wechat");      ITEM_LABELS+=("📱 微信 (openclaw-weixin)");           ITEM_SELECTED+=($( [ "$SETUP_WECHAT" = "yes" ] && echo 1 || echo 0 ))
-    ITEM_IDS+=("dingtalk");    ITEM_LABELS+=("🔷 钉钉 (DingTalk)");                  ITEM_SELECTED+=($( [ "$SETUP_DINGTALK" = "yes" ] && echo 1 || echo 0 ))
-    ITEM_IDS+=("telegram");    ITEM_LABELS+=("✈️  Telegram");                         ITEM_SELECTED+=($( [ "$SETUP_TELEGRAM" = "yes" ] && echo 1 || echo 0 ))
-    ITEM_IDS+=("feishu");      ITEM_LABELS+=("🔵 飞书 (Feishu/Lark)");               ITEM_SELECTED+=($( [ "$SETUP_FEISHU" = "yes" ] && echo 1 || echo 0 ))
-    ITEM_IDS+=("qq");          ITEM_LABELS+=("🐧 QQ");                                ITEM_SELECTED+=($( [ "$SETUP_QQ" = "yes" ] && echo 1 || echo 0 ))
-    ITEM_IDS+=("custom-ch");   ITEM_LABELS+=("🔧 自定义 Webhook 频道");               ITEM_SELECTED+=($( [ "$SETUP_CUSTOM_CHANNEL" = "yes" ] && echo 1 || echo 0 ))
-
-    # 浏览器（仅 full 模式显示）
+    # 浏览器（仅 full 模式）
     if [ "$INSTALL_MODE" = "full" ]; then
-        ITEM_IDS+=("browser");   ITEM_LABELS+=("🌐 独立浏览器 (Sidecar Chrome)");    ITEM_SELECTED+=($( [ "$SHARE_CHROME" = "yes" ] && echo 1 || echo 0 ))
+        ITEM_IDS+=("browser"); ITEM_LABELS+=("🌐 独立浏览器 (Sidecar Chrome)")
+        ITEM_SELECTED+=($( [ "$SHARE_CHROME" = "yes" ] && echo 1 || echo 0 ))
     fi
 
     # Skills
-    ITEM_IDS+=("summarize");               ITEM_LABELS+=("📝 长文摘要 (summarize)");                    ITEM_SELECTED+=(1)
-    ITEM_IDS+=("openclaw-cost-tracker");   ITEM_LABELS+=("💰 成本追踪 (openclaw-cost-tracker)");        ITEM_SELECTED+=(1)
+    ITEM_IDS+=("summarize");             ITEM_LABELS+=("📝 长文摘要 (summarize)");             ITEM_SELECTED+=(1)
+    ITEM_IDS+=("openclaw-cost-tracker"); ITEM_LABELS+=("💰 成本追踪 (openclaw-cost-tracker)"); ITEM_SELECTED+=(1)
 
-    # 镜像加速（仅 full 模式且 Linux）
+    # 镜像加速（仅 full 模式）
     if [ "$INSTALL_MODE" = "full" ]; then
-        local mirror_default=0
-        [ "$(uname -s)" = "Linux" ] && mirror_default=1
-        [ "$USE_MIRROR" = "yes" ] && mirror_default=1
-        ITEM_IDS+=("docker-mirror"); ITEM_LABELS+=("🌏 国内 Docker 镜像加速"); ITEM_SELECTED+=($mirror_default)
+        local md=0
+        [ "$(uname -s)" = "Linux" ] && md=1
+        [ "$USE_MIRROR" = "yes" ] && md=1
+        ITEM_IDS+=("docker-mirror"); ITEM_LABELS+=("🌏 国内 Docker 镜像加速"); ITEM_SELECTED+=($md)
     fi
 
     local num_items=${#ITEM_IDS[@]}
@@ -1041,43 +1098,21 @@ step3() {
     done
 
     # 收集选择结果
-    SETUP_WECHAT="no"; SETUP_DINGTALK="no"; SETUP_TELEGRAM="no"
-    SETUP_FEISHU="no"; SETUP_QQ="no"; SETUP_CUSTOM_CHANNEL="no"
     SHARE_CHROME="no"; USE_MIRROR="no"
     SELECTED_SKILLS=()
 
     for ((i=0; i<num_items; i++)); do
         [ ${ITEM_SELECTED[$i]} -eq 0 ] && continue
         case "${ITEM_IDS[$i]}" in
-            wechat)       SETUP_WECHAT="yes" ;;
-            dingtalk)     SETUP_DINGTALK="yes" ;;
-            telegram)     SETUP_TELEGRAM="yes" ;;
-            feishu)       SETUP_FEISHU="yes" ;;
-            qq)           SETUP_QQ="yes" ;;
-            custom-ch)    SETUP_CUSTOM_CHANNEL="yes" ;;
-            browser)      SHARE_CHROME="yes" ;;
+            browser)       SHARE_CHROME="yes" ;;
             docker-mirror) USE_MIRROR="yes" ;;
-            *)            SELECTED_SKILLS+=("${ITEM_IDS[$i]}:${ITEM_LABELS[$i]}") ;;
+            *)             SELECTED_SKILLS+=("${ITEM_IDS[$i]}:${ITEM_LABELS[$i]}") ;;
         esac
     done
 
     local total_selected=0
     for ((i=0; i<num_items; i++)); do [ ${ITEM_SELECTED[$i]} -eq 1 ] && ((total_selected++)); done
     print_success "已选择 ${total_selected} 项"
-
-    # 自定义频道额外信息收集
-    if [ "$SETUP_CUSTOM_CHANNEL" = "yes" ]; then
-        echo ""
-        echo -e "  ${BOLD}自定义频道配置：${NC}"
-        prompt_input "Webhook URL" "$CUSTOM_CHANNEL_WEBHOOK_URL" CUSTOM_CHANNEL_WEBHOOK_URL
-        prompt_secret "Token / Secret" "$CUSTOM_CHANNEL_TOKEN" CUSTOM_CHANNEL_TOKEN
-        echo -e "  ${BOLD}消息格式：${NC}"
-        echo -e "  ${GREEN}1)${NC} JSON  ${GREEN}2)${NC} Text  ${GREEN}3)${NC} Markdown"
-        echo -en "  选择 ${DIM}[1]${NC}: "
-        read -r fmt; fmt=${fmt:-1}
-        case $fmt in 2) CUSTOM_CHANNEL_MSG_FORMAT="text";; 3) CUSTOM_CHANNEL_MSG_FORMAT="markdown";; *) CUSTOM_CHANNEL_MSG_FORMAT="json";; esac
-        print_success "自定义频道已配置"
-    fi
 
     echo ""
     echo -e "  ${DIM}按 Enter 继续，输入 b 返回上一步${NC}"
