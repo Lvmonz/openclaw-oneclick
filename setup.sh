@@ -1655,17 +1655,35 @@ MIRRORYML
         print_info "已生成镜像加速 override (docker-compose.mirror.yml)"
     fi
 
-    # 拉取镜像（带重试）
+    # 拉取镜像（静默后台拉取 + 旋转动画）
     local pull_ok=0
     for attempt in 1 2 3; do
-        echo -e "    ${DIM}拉取中 (第 ${attempt}/3 次)...${NC}"
-        echo ""
-        if compose_cmd pull; then
+        echo -en "    ${DIM}拉取中 (第 ${attempt}/3 次) " > /dev/tty
+
+        # 后台执行 pull，完全隐藏层级日志
+        compose_cmd pull --quiet > /dev/null 2>&1 &
+        local pull_pid=$!
+
+        # 旋转动画
+        local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+        while kill -0 $pull_pid 2>/dev/null; do
+            for ((s=0; s<${#spin}; s++)); do
+                echo -en "\r    ${DIM}拉取中 (第 ${attempt}/3 次) ${spin:$s:1} ${NC}" > /dev/tty
+                sleep 0.15
+                kill -0 $pull_pid 2>/dev/null || break
+            done
+        done
+
+        wait $pull_pid
+        local pull_exit=$?
+        echo -en "\r    ${DIM}拉取中 (第 ${attempt}/3 次)   ${NC}" > /dev/tty
+        echo "" > /dev/tty
+
+        if [ $pull_exit -eq 0 ]; then
             pull_ok=1
             break
         fi
         if [ $attempt -lt 3 ]; then
-            echo ""
             print_warn "拉取失败，${attempt} 秒后重试..."
             sleep $attempt
         fi
