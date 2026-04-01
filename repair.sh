@@ -182,12 +182,12 @@ if [ "$INSTALL_MODE" = "full" ]; then
     echo -e "  ${DIM}────────────────────────────────${NC}"
 
     check_port() {
-        local port=$1 name=$2
+port=$1 name=$2
         if lsof -i :"$port" &>/dev/null 2>&1 || ss -tlnp 2>/dev/null | grep -q ":$port "; then
-            local pid
+pid
             pid=$(lsof -ti :"$port" 2>/dev/null | head -1)
             if [ -n "$pid" ]; then
-                local pname
+pname
                 pname=$(ps -p "$pid" -o comm= 2>/dev/null)
                 if echo "$pname" | grep -qi docker; then
                     print_success "端口 $port ($name) — Docker 占用 ✓"
@@ -215,9 +215,8 @@ if [ "$INSTALL_MODE" = "full" ]; then
     local_prefix=$(basename "$(pwd)")
     for vol in "${local_prefix}_openclaw-data" "${local_prefix}_browser_profile"; do
         if docker volume inspect "$vol" &>/dev/null 2>&1; then
-            local size
-            size=$(docker system df -v 2>/dev/null | grep "$vol" | awk '{print $4}' || echo "未知")
-            print_success "$vol ($size)"
+            vol_info=$(docker system df -v 2>/dev/null | grep "$vol" | awk '{print $4}' || echo "未知")
+            print_success "$vol ($vol_info)"
         else
             if [[ "$vol" == *"browser_profile"* ]] && [ "$SHARE_CHROME" != "yes" ]; then
                 print_info "$vol — 未使用（浏览器未启用）"
@@ -229,9 +228,10 @@ if [ "$INSTALL_MODE" = "full" ]; then
     done
 
     # 磁盘空间
-    local available
-    available=$(df -h . 2>/dev/null | awk 'NR==2{print $4}')
-    print_info "可用磁盘空间: $available"
+    if command -v df &>/dev/null; then
+        disk_avail=$(df -h "$PWD" | awk 'NR==2 {print $4}' 2>/dev/null || df -h . | awk 'NR==2 {print $4}')
+        print_info "可用磁盘空间: $disk_avail"
+    fi
     echo ""
 
 else
@@ -240,10 +240,10 @@ else
     echo -e "  ${DIM}────────────────────────────────${NC}"
 
     if command -v node &>/dev/null; then
-        local node_ver
+node_ver
         node_ver=$(node --version)
         print_success "Node.js $node_ver"
-        local major
+major
         major=$(echo "$node_ver" | sed 's/v//' | cut -d. -f1)
         if [ "$major" -lt 22 ]; then
             record_issue
@@ -296,12 +296,12 @@ echo -e "  ${DIM}─────────────────────
 
 LOG_DIR="$SCRIPT_DIR/logs"
 if [ -d "$LOG_DIR" ]; then
-    local log_count
+log_count
     log_count=$(find "$LOG_DIR" -name "install_*.log" 2>/dev/null | wc -l | tr -d ' ')
     print_info "安装日志: ${log_count} 个"
 
     # 清理超过 24h 的日志
-    local old_count
+old_count
     old_count=$(find "$LOG_DIR" -name "install_*.log" -mtime +1 2>/dev/null | wc -l | tr -d ' ')
     if [ "$old_count" -gt 0 ]; then
         find "$LOG_DIR" -name "install_*.log" -mtime +1 -delete 2>/dev/null
@@ -321,7 +321,7 @@ if [ $ISSUES_FOUND -eq 0 ]; then
 elif [ $ISSUES_FIXED -eq $ISSUES_FOUND ]; then
     echo -e "  ${GREEN}${BOLD}✅ 发现 ${ISSUES_FOUND} 个问题，全部已自动修复！${NC}"
 else
-    local remaining=$((ISSUES_FOUND - ISSUES_FIXED))
+remaining=$((ISSUES_FOUND - ISSUES_FIXED))
     echo -e "  ${YELLOW}${BOLD}⚠ 发现 ${ISSUES_FOUND} 个问题，已修复 ${ISSUES_FIXED} 个，${remaining} 个需手动处理${NC}"
 fi
 echo ""
@@ -338,8 +338,8 @@ export_choice=${export_choice:-2}
 
 if [ "$export_choice" = "1" ]; then
     # 尝试文件选择器（macOS osascript / Linux zenity）
-    local export_path=""
-    local default_name="openclaw_diag_$(date +%Y%m%d_%H%M%S).log"
+export_path=""
+default_name="openclaw_diag_$(date +%Y%m%d_%H%M%S).log"
 
     if [ "$(uname -s)" = "Darwin" ] && command -v osascript &>/dev/null; then
         export_path=$(osascript -e "
@@ -393,7 +393,7 @@ if [ "$export_choice" = "1" ]; then
         echo ""
         echo "--- 安装日志 ---"
         if [ -d "$LOG_DIR" ]; then
-            local latest_log
+latest_log
             latest_log=$(ls -t "$LOG_DIR"/install_*.log 2>/dev/null | head -1)
             if [ -n "$latest_log" ]; then
                 echo "最新日志: $latest_log"
