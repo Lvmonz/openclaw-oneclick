@@ -60,6 +60,7 @@
      - `接收单聊消息` (`im:message.p2p_msg:readonly`)
      - `获取与发送单聊、群组消息` (`im:message`)
      - `接收群聊消息` (`im:message.group_msg:readonly`)
+     - `获取用户基本信息` (`contact:contact.base:readonly` 或 `contact:contact:readonly_as_app`)
    - 点击【事件订阅】，如果是本地运行 OpenClaw，你需要配置长连接（WebSocket）或者填入服务器回调 URL，并勾选对应的消息接收事件。
    - 最后，点击【版本管理与发布】，创建一个新版本并申请发布。
 
