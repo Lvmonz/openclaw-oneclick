@@ -205,94 +205,96 @@ print_header
 echo -e "  ${BOLD}正在检查环境...${NC}"
 echo ""
 
-# 检查 Docker，Linux 上自动安装
-if ! command -v docker &>/dev/null; then
-    print_warn "未检测到 Docker"
-    echo ""
-
-    # 检测操作系统
-    _os_type=""
-    case "$(uname -s)" in
-        Linux*)  _os_type="linux" ;;
-        Darwin*) _os_type="mac" ;;
-        *)       _os_type="other" ;;
-    esac
-
-    if [ "$_os_type" = "linux" ]; then
-        echo -e "  ${BOLD}检测到 Linux 系统，正在自动安装 Docker...${NC}"
+check_docker_env() {
+    # 检查 Docker，Linux 上自动安装
+    if ! command -v docker &>/dev/null; then
+        print_warn "未检测到 Docker"
         echo ""
-        if curl -fsSL https://get.docker.com | sh; then
-            # 将当前用户加入 docker 组（避免需要 sudo）
-            sudo usermod -aG docker "$USER" 2>/dev/null || true
-            # 启动 Docker 服务
+
+        # 检测操作系统
+        _os_type=""
+        case "$(uname -s)" in
+            Linux*)  _os_type="linux" ;;
+            Darwin*) _os_type="mac" ;;
+            *)       _os_type="other" ;;
+        esac
+
+        if [ "$_os_type" = "linux" ]; then
+            echo -e "  ${BOLD}检测到 Linux 系统，正在自动安装 Docker...${NC}"
+            echo ""
+            if curl -fsSL https://get.docker.com | sh; then
+                # 将当前用户加入 docker 组（避免需要 sudo）
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
+                # 启动 Docker 服务
+                sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+                sudo systemctl enable docker 2>/dev/null || true
+                print_success "Docker 已自动安装并启动"
+                echo ""
+                print_warn "如果后续出现权限问题，请重新登录终端或执行：newgrp docker"
+                echo ""
+            else
+                print_error "Docker 自动安装失败"
+                print_info "请手动安装：curl -fsSL https://get.docker.com | sh"
+                exit 1
+            fi
+        else
+            print_error "请先安装 Docker Desktop"
+            echo ""
+            echo -e "  macOS: ${CYAN}https://docker.com/get-started${NC} → 下载 .dmg → 拖入 Applications → 启动"
+            echo -e "  Windows: ${CYAN}https://docker.com/get-started${NC} → 下载 .exe → 勾选 WSL 2 → 安装重启"
+            echo ""
+            exit 1
+        fi
+    fi
+    print_success "Docker $(docker --version 2>/dev/null | sed 's/.*version //' | sed 's/,.*//')"
+
+    # 检查 Docker Compose
+    if ! docker compose version &>/dev/null; then
+        print_warn "未检测到 Docker Compose V2"
+        # Linux 上尝试自动安装 compose 插件
+        if [ "$(uname -s)" = "Linux" ]; then
+            echo -en "  ${DIM}正在安装 Docker Compose 插件..."
+            sudo mkdir -p /usr/local/lib/docker/cli-plugins 2>/dev/null
+            _compose_url="https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
+            if sudo curl -fsSL "$_compose_url" -o /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null; then
+                sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+                echo -e " ✔${NC}"
+                print_success "Docker Compose 已自动安装"
+            else
+                echo -e " 失败${NC}"
+                print_error "Compose 安装失败，请手动安装"
+                exit 1
+            fi
+        else
+            echo -e "  请更新 Docker Desktop 到最新版本"
+            exit 1
+        fi
+    fi
+    print_success "Docker Compose $(docker compose version 2>/dev/null | sed 's/.*v//')"
+
+    # 检查 Docker 是否在运行
+    if ! docker info &>/dev/null 2>&1; then
+        print_warn "Docker 未在运行"
+        # Linux 上尝试自动启动
+        if [ "$(uname -s)" = "Linux" ]; then
+            echo -en "  ${DIM}正在启动 Docker..."
             sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
-            sudo systemctl enable docker 2>/dev/null || true
-            print_success "Docker 已自动安装并启动"
-            echo ""
-            print_warn "如果后续出现权限问题，请重新登录终端或执行：newgrp docker"
-            echo ""
+            sleep 3
+            if docker info &>/dev/null 2>&1; then
+                echo -e " ✔${NC}"
+                print_success "Docker 已自动启动"
+            else
+                echo -e " 失败${NC}"
+                print_error "Docker 启动失败，请手动运行：sudo systemctl start docker"
+                exit 1
+            fi
         else
-            print_error "Docker 自动安装失败"
-            print_info "请手动安装：curl -fsSL https://get.docker.com | sh"
+            print_error "请先启动 Docker Desktop"
             exit 1
         fi
-    else
-        print_error "请先安装 Docker Desktop"
-        echo ""
-        echo -e "  macOS: ${CYAN}https://docker.com/get-started${NC} → 下载 .dmg → 拖入 Applications → 启动"
-        echo -e "  Windows: ${CYAN}https://docker.com/get-started${NC} → 下载 .exe → 勾选 WSL 2 → 安装重启"
-        echo ""
-        exit 1
     fi
-fi
-print_success "Docker $(docker --version 2>/dev/null | sed 's/.*version //' | sed 's/,.*//')"
-
-# 检查 Docker Compose
-if ! docker compose version &>/dev/null; then
-    print_warn "未检测到 Docker Compose V2"
-    # Linux 上尝试自动安装 compose 插件
-    if [ "$(uname -s)" = "Linux" ]; then
-        echo -en "  ${DIM}正在安装 Docker Compose 插件..."
-        sudo mkdir -p /usr/local/lib/docker/cli-plugins 2>/dev/null
-        _compose_url="https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)"
-        if sudo curl -fsSL "$_compose_url" -o /usr/local/lib/docker/cli-plugins/docker-compose 2>/dev/null; then
-            sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-            echo -e " ✔${NC}"
-            print_success "Docker Compose 已自动安装"
-        else
-            echo -e " 失败${NC}"
-            print_error "Compose 安装失败，请手动安装"
-            exit 1
-        fi
-    else
-        echo -e "  请更新 Docker Desktop 到最新版本"
-        exit 1
-    fi
-fi
-print_success "Docker Compose $(docker compose version 2>/dev/null | sed 's/.*v//')"
-
-# 检查 Docker 是否在运行
-if ! docker info &>/dev/null 2>&1; then
-    print_warn "Docker 未在运行"
-    # Linux 上尝试自动启动
-    if [ "$(uname -s)" = "Linux" ]; then
-        echo -en "  ${DIM}正在启动 Docker..."
-        sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
-        sleep 3
-        if docker info &>/dev/null 2>&1; then
-            echo -e " ✔${NC}"
-            print_success "Docker 已自动启动"
-        else
-            echo -e " 失败${NC}"
-            print_error "Docker 启动失败，请手动运行：sudo systemctl start docker"
-            exit 1
-        fi
-    else
-        print_error "请先启动 Docker Desktop"
-        exit 1
-    fi
-fi
-print_success "Docker 正在运行"
+    print_success "Docker 正在运行"
+}
 
 echo ""
 sleep 1
@@ -1757,6 +1759,18 @@ SOULEOF
             exit 1
         fi
         
+        # Lite 工具函数：使用 node 注入 JSON
+        inject_json_lite() {
+            local js_code="$1"
+            node -e "
+const fs = require('fs');
+const p = '$HOME/.openclaw/openclaw.json';
+const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+${js_code}
+fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+" 2>/dev/null
+        }
+        
         echo ""
         echo -e "  ${BLUE}[3/7]${NC} 初始化系统服务 (Gateway) 与本地配置..."
         echo -en "    ${DIM}同步配置到本机 ~/.openclaw...${NC}"
@@ -1773,6 +1787,9 @@ SOULEOF
         echo -e " ✔${NC}"
         
         echo -en "    ${DIM}启动本机 Gateway 常驻后台服务...${NC}"
+        # 必须显式激活 local mode 才能启动脱机后台
+        inject_json_lite "cfg.gateway = cfg.gateway || {}; cfg.gateway.mode = 'local';"
+        
         openclaw gateway install --token "$OPENCLAW_GATEWAY_TOKEN" --force >/dev/null 2>&1
         openclaw gateway start >/dev/null 2>&1
         echo -e " ✔${NC}"
@@ -1802,33 +1819,16 @@ SOULEOF
         fi
         print_success "文件读写（内置 File System）"
 
-        # Lite 工具函数：使用 node 注入 JSON
-        inject_json_lite() {
-            local js_code="$1"
-            node -e "
-const fs = require('fs');
-const p = '$HOME/.openclaw/openclaw.json';
-const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
-${js_code}
-fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
-" 2>/dev/null
-        }
-
         # Lite 通道安装函数
         install_channel_lite() {
             local name=$1 label=$2 npm_pkg=$3 check_dir=$4 plugin_name=$5
             echo -en "    ${DIM}安装 ${label}..."
-            if [ -n "$check_dir" ] && [ -d "$check_dir" ]; then
-                echo -e "${NC}"
-                print_success "${label} 已存在，跳过安装命令"
-                return 0
-            fi
-            
-            npm install --prefix ~/.openclaw --no-save "$npm_pkg" >/dev/null 2>&1
+            # For global npm packages, we just rely on exit code rather than check_dir which path can heavily vary by OS
+            npm install -g "$npm_pkg" >/dev/null 2>&1
             local exit_code=$?
             echo -e " ${NC}"
             
-            if [ $exit_code -eq 0 ] || [ -d "$check_dir" ]; then
+            if [ $exit_code -eq 0 ]; then
                 print_success "${label} 安装成功"
                 if [ -n "$plugin_name" ]; then
                     inject_json_lite "
@@ -1838,7 +1838,7 @@ if (!allow.includes('${plugin_name}')) allow.push('${plugin_name}');
                 fi
                 return 0
             else
-                print_warn "${label} 安装失败（可手动进入终端重试: npm install --prefix ~/.openclaw ${npm_pkg}）"
+                print_warn "${label} 安装失败（可手动进入终端重试: sudo npm install -g ${npm_pkg}）"
                 return 1
             fi
         }
@@ -2443,8 +2443,7 @@ else
 
     # 满血版才需要 Docker
     if [ "$INSTALL_MODE" = "full" ]; then
-        # Docker 环境检查已在上面完成
-        true
+        check_docker_env
     else
         # 简易版检查 Node.js
         if ! command -v node &>/dev/null; then
