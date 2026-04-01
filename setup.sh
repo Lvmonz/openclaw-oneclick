@@ -1866,11 +1866,11 @@ MIRRORYML
             local skill_name="${item%%:*}"
             local skill_desc="${item##*:}"
             # 检查是否已安装（避免每次重复下载）
-            if docker exec openclaw-main test -d "/home/node/.openclaw/skills/${skill_name}" 2>/dev/null; then
+            if docker exec openclaw-main test -d "/home/node/.openclaw/workspace/skills/${skill_name}" 2>/dev/null; then
                 print_success "${skill_desc} (已缓存，跳过下载)"
             else
                 echo -en "    ${DIM}正在安装 ${skill_name}..."
-                if docker exec openclaw-main openclaw skills install "$skill_name" >/dev/null 2>&1; then
+                if docker exec openclaw-main openclaw skills install "$skill_name" --force >/dev/null 2>&1; then
                     echo -e "${NC}"
                     print_success "${skill_desc}"
                 else
