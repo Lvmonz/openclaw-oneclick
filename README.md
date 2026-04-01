@@ -23,6 +23,7 @@ openclaw-oneclick/
 ├── repair.sh                   # 一键修复 / 诊断 / 日志导出
 ├── uninstall.sh                # 一键卸载脚本（标准/彻底）
 ├── factory-reset.sh            # 一键洗脑 — 出厂重置脚本
+├── CHANNELS_SOP.md             # 🤖 通讯频道机器人配置指南
 ├── .env.example                # 环境变量模板
 ├── docker-compose.yml          # 核心容器编排（大脑主容器）
 ├── docker-compose.browser.yml  # 浏览器 Sidecar 编排（按需加载）
