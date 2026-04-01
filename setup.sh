@@ -1060,7 +1060,7 @@ step3() {
                     echo ""
                 fi
             done
-            prompt_input "Chat ID (选填，留空则接收任何人消息)" "$TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
+
             ;;
         4)
             SETUP_FEISHU="yes"
@@ -1912,8 +1912,8 @@ cfg.channels.dingtalk = {
 cfg.channels = cfg.channels || {};
 cfg.channels.telegram = {
     botToken: '${TELEGRAM_BOT_TOKEN}',
-    chatId: '${TELEGRAM_CHAT_ID}',
-    dmPolicy: 'open'
+    dmPolicy: 'open',
+    allowFrom: ['*']
 };
 "
             print_success "✈️ Telegram 配置已注入"
