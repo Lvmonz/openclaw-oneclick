@@ -176,6 +176,46 @@ precheck_api() {
     fi
 }
 
+# 安装 Node.js
+install_node() {
+    echo -en "  ${DIM}检测到缺失 Node.js，正在尝试自动安装...${NC}" > /dev/tty
+    if [ "$(uname -s)" = "Darwin" ]; then
+        if command -v brew &>/dev/null; then
+            echo -e "\n  ${DIM}通过 Homebrew 安装 Node.js 22...${NC}"
+            brew install node@22
+            export PATH="/opt/homebrew/opt/node@22/bin:/usr/local/opt/node@22/bin:$PATH"
+        else
+            echo -e " ✖${NC}"
+            print_error "未检测到 Homebrew。请手动安装 Node.js 22: https://nodejs.org/"
+            exit 1
+        fi
+    elif [ "$(uname -s)" = "Linux" ]; then
+        if command -v apt-get &>/dev/null; then
+            echo -e "\n  ${DIM}通过 NodeSource 安装 Node.js 22...${NC}"
+            curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - 
+            sudo apt-get install -y nodejs
+        elif command -v yum &>/dev/null; then
+            echo -e "\n  ${DIM}通过 NodeSource 安装 Node.js 22...${NC}"
+            curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo -E bash - 
+            sudo yum install -y nodejs
+        else
+            echo -e " ✖${NC}"
+            print_error "无法自动安装 Node.js。请手动安装: https://nodejs.org/"
+            exit 1
+        fi
+    else
+        echo -e " ✖${NC}"
+        print_error "不支持的系统，无法自动安装 Node.js。请手动安装: https://nodejs.org/"
+        exit 1
+    fi
+    
+    if ! command -v node &>/dev/null; then
+        print_error "安装 Node.js 仍失败或未在 PATH 中，请手动安装: https://nodejs.org/"
+        exit 1
+    fi
+    print_success "Node.js $(node --version) 已自动安装完毕"
+}
+
 # 构造 docker compose 命令（根据是否启用浏览器/镜像动态选择 compose 文件）
 compose_cmd() {
     local files="-f docker-compose.yml"
@@ -1060,7 +1100,7 @@ step3() {
                     echo ""
                 fi
             done
-
+            prompt_input "Chat ID (选填，留空则接收任何人消息)" "$TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
             ;;
         4)
             SETUP_FEISHU="yes"
@@ -1908,12 +1948,18 @@ cfg.channels.dingtalk = {
 
         # Telegram
         if [ "$SETUP_TELEGRAM" = "yes" ]; then
+            local tg_policy="open"
+            local tg_allow="['*']"
+            if [ -n "$TELEGRAM_CHAT_ID" ]; then
+                tg_policy="allowlist"
+                tg_allow="['${TELEGRAM_CHAT_ID}']"
+            fi
             inject_json_lite "
 cfg.channels = cfg.channels || {};
 cfg.channels.telegram = {
     botToken: '${TELEGRAM_BOT_TOKEN}',
-    dmPolicy: 'open',
-    allowFrom: ['*']
+    dmPolicy: '${tg_policy}',
+    allowFrom: ${tg_allow}
 };
 "
             print_success "✈️ Telegram 配置已注入"
@@ -2464,10 +2510,10 @@ else
     else
         # 简易版检查 Node.js
         if ! command -v node &>/dev/null; then
-            print_error "简易版需要 Node.js 22+，请先安装: https://nodejs.org/"
-            exit 1
+            install_node
+        else
+            print_success "Node.js $(node --version)"
         fi
-        print_success "Node.js $(node --version)"
     fi
 
     step1
