@@ -1669,14 +1669,17 @@ MIRRORYML
             local dl_info
             dl_info=$(grep -oE 'Downloading [0-9]+\.[0-9]+[kKmMgG]B' "$pull_log" 2>/dev/null | tail -1)
             local pulled_count
-            pulled_count=$(grep -c 'Pull complete\|Already exists\|Download complete' "$pull_log" 2>/dev/null || echo 0)
+            pulled_count=$(grep -E -c 'Pull complete|Already exists|Download complete' "$pull_log" 2>/dev/null || true)
+            # 兼容处理可能出现的多行输出
+            pulled_count=$(echo "$pulled_count" | tail -1)
+            [ -z "$pulled_count" ] && pulled_count=0
             local s_char="${spin:$spin_idx:1}"
             spin_idx=$(( (spin_idx + 1) % ${#spin} ))
 
             if [ -n "$dl_info" ]; then
-                printf "\r    ${DIM}%s 下载中... %s | 已完成 %d 层${NC}      " "$s_char" "$dl_info" "$pulled_count" > /dev/tty
+                printf "\r    ${DIM}%s 下载中... %s | 已完成 %s 层${NC}      " "$s_char" "$dl_info" "$pulled_count" > /dev/tty
             else
-                printf "\r    ${DIM}%s 准备中... 已完成 %d 层${NC}          " "$s_char" "$pulled_count" > /dev/tty
+                printf "\r    ${DIM}%s 准备中... 已完成 %s 层${NC}          " "$s_char" "$pulled_count" > /dev/tty
             fi
             sleep 0.3
         done
