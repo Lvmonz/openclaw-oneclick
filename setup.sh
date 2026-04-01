@@ -1721,6 +1721,42 @@ ${chrome_section}
 SOULEOF
     print_success "配置文件已准备"
 
+    if [ "$INSTALL_MODE" = "lite" ]; then
+        echo ""
+        echo -e "  ${BLUE}[2/3]${NC} 应用本地配置文件..."
+        echo -en "    ${DIM}同步配置到本机 ~/.openclaw...${NC}"
+        mkdir -p ~/.openclaw/workspace/skills ~/.openclaw/extensions 2>/dev/null
+        cp "$tmpdir/openclaw.json" ~/.openclaw/openclaw.json 2>/dev/null
+        for f in "$tmpdir"/*.md; do
+            [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/"$(basename "$f")" 2>/dev/null
+        done
+        if ls templates/skills/*.md 1>/dev/null 2>&1; then
+            for f in templates/skills/*.md; do
+                [ -f "$f" ] && cp "$f" ~/.openclaw/workspace/skills/"$(basename "$f")" 2>/dev/null
+            done
+        fi
+        echo -e " ✔${NC}"
+
+        echo ""
+        echo -e "  ${BLUE}[3/3]${NC} 初始化本地环境 (简易版)..."
+        echo -en "    ${DIM}全局安装 openclaw CLI (依赖网络 npm，约需半分钟)...${NC}"
+        npm install -g openclaw >/dev/null 2>&1
+        echo -e " ✔${NC}"
+        
+        # 简易版不处理 Skills 插件与 Docker 通道通讯等复杂功能，作为开箱即用入口即可
+        rm -rf "$tmpdir"
+
+        echo ""
+        echo -e "  ${DIM}════════════════════════════════${NC}"
+        echo ""
+        echo -e "  ${GREEN}${BOLD}✅ 简易版 (Lite) 安装完成！${NC}"
+        echo ""
+        echo -e "  ${BOLD}即刻畅聊${NC}:  openclaw agent -m \"你的问题\""
+        echo -e "  ${BOLD}查看状态${NC}:  openclaw agent -m \"/status\""
+        echo ""
+        return
+    fi
+
     echo ""
     echo -e "  ${BLUE}[2/7]${NC} 拉取镜像（首次按需下载，约 2-5 分钟）..."
 
