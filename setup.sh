@@ -1178,6 +1178,8 @@ step5() {
     echo -e "    ${YELLOW}4${NC}      修改用户信息"
     echo -e "    ${YELLOW}5${NC}      🔄 一键升级到最新版"
     echo -e "    ${YELLOW}6${NC}      🔧 一键修复 / 导出日志"
+    echo -e "    ${YELLOW}7${NC}      🧹 一键洗脑 / 出厂重置"
+    echo -e "    ${YELLOW}8${NC}      💣 一键卸载 OpenClaw"
     echo -e "    ${RED}q${NC}      保存配置但不安装"
     echo ""
     echo -en "  你的选择: "
@@ -1204,6 +1206,28 @@ step5() {
                 bash repair.sh
             else
                 print_error "repair.sh 未找到"
+            fi
+            exit 0
+            ;;
+        7)
+            echo ""
+            if [ -f factory-reset.sh ]; then
+                bash factory-reset.sh
+            else
+                print_error "factory-reset.sh 未找到"
+            fi
+            echo ""
+            echo -e "  ${DIM}按 Enter 返回主菜单${NC}"
+            read -r _
+            step5
+            return
+            ;;
+        8)
+            echo ""
+            if [ -f uninstall.sh ]; then
+                bash uninstall.sh
+            else
+                print_error "uninstall.sh 未找到"
             fi
             exit 0
             ;;

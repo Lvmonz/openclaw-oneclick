@@ -21,6 +21,7 @@ openclaw-oneclick/
 ├── setup.sh                    # 主交互式安装向导 (v2.0)
 ├── upgrade.sh                  # 一键升级脚本（版本感知）
 ├── repair.sh                   # 一键修复 / 诊断 / 日志导出
+├── uninstall.sh                # 一键卸载脚本（标准/彻底）
 ├── factory-reset.sh            # 一键洗脑 — 出厂重置脚本
 ├── .env.example                # 环境变量模板
 ├── docker-compose.yml          # 核心容器编排（大脑主容器）
@@ -147,6 +148,21 @@ bash repair.sh
 | 🔵 飞书 | `@openclaw/feishu` 插件 | 企业应用 App ID/Secret |
 | 🐧 QQ | `openclaw channels add` | Bot 应用凭证 |
 | 🔧 自定义 | Webhook 配置 | URL + Token + 消息格式 |
+
+### 💣 一键卸载
+
+```bash
+# 独立脚本
+bash uninstall.sh
+
+# 或在安装向导确认页选择 "8" 一键卸载
+./setup.sh
+```
+
+| 卸载方式 | 容器 | 镜像 | 数据卷 | Skills | .env | 日志 | 缓存 |
+|----------|:----:|:----:|:------:|:------:|:----:|:----:|:----:|
+| 🧹 标准卸载 | ✅ 删 | 保留 | 保留 | ✅ 保留 | ✅ 保留 | 保留 | 保留 |
+| 💣 彻底卸载 | ✅ 删 | ✅ 删 | ✅ 删 | ❌ 删 | ❌ 删 | ❌ 删 | ❌ 删 |
 
 ### 🧹 一键洗脑 / 出厂重置
 
