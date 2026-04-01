@@ -1018,8 +1018,22 @@ step3() {
             echo -e "  ${DIM}💡 没有企业？手机钉钉底部【通讯录】滑到底，点击“创建/加入企业”免费创建一个“测试组织”。${NC}"
             echo -e "  ${DIM}💡 然后前往电脑网页 (https://open.dingtalk.com)，进入“应用开发 -> 企业内部开发 -> 机器人”创建应用并摘取凭证。${NC}"
             echo ""
-            prompt_input "App Key" "$DINGTALK_APP_KEY" DINGTALK_APP_KEY
-            prompt_secret "App Secret" "$DINGTALK_APP_SECRET" DINGTALK_APP_SECRET
+            while true; do
+                prompt_input "App Key" "$DINGTALK_APP_KEY" DINGTALK_APP_KEY
+                prompt_secret "App Secret" "$DINGTALK_APP_SECRET" DINGTALK_APP_SECRET
+                echo -en "  ${DIM}正在验证凭证..."
+                local res
+                res=$(curl -s "https://oapi.dingtalk.com/gettoken?appkey=$DINGTALK_APP_KEY&appsecret=$DINGTALK_APP_SECRET" 2>/dev/null || echo "")
+                if echo "$res" | grep -q '"errcode":0'; then
+                    echo -e " ${NC}"
+                    print_success "凭证校验成功"
+                    break
+                else
+                    echo -e " 失败${NC}"
+                    print_error "凭证无效，请检查重试！"
+                    echo ""
+                fi
+            done
             ;;
         3)
             SETUP_TELEGRAM="yes"
@@ -1029,7 +1043,21 @@ step3() {
             echo -e "  ${DIM}💡 提示：在 Telegram 顶部搜索 @BotFather 并发送 /newbot，起个名字即可创建机器人。${NC}"
             echo -e "  ${DIM}它会返回一段 'Use this token to access the HTTP API:' 下方的红色文本，那就是你的 Token。${NC}"
             echo ""
-            prompt_secret "Bot Token" "$TELEGRAM_BOT_TOKEN" TELEGRAM_BOT_TOKEN
+            while true; do
+                prompt_secret "Bot Token" "$TELEGRAM_BOT_TOKEN" TELEGRAM_BOT_TOKEN
+                echo -en "  ${DIM}正在验证凭证..."
+                local res
+                res=$(curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe" 2>/dev/null || echo "")
+                if echo "$res" | grep -q '"ok":true'; then
+                    echo -e " ${NC}"
+                    print_success "凭证校验成功"
+                    break
+                else
+                    echo -e " 失败${NC}"
+                    print_error "Bot Token 无效，请检查重试！"
+                    echo ""
+                fi
+            done
             prompt_input "Chat ID (选填，留空则接收任何人消息)" "$TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
             ;;
         4)
@@ -1040,8 +1068,24 @@ step3() {
             echo -e "  ${DIM}💡 没有企业？手机飞书点击左上角头像 -> “创建或加入团队”，即可免费创建一个“测试团队”。${NC}"
             echo -e "  ${DIM}💡 然后前往电脑网页 (https://open.feishu.cn) 登录开发者后台，点击“创建企业自建应用”摘取凭证。${NC}"
             echo ""
-            prompt_input "App ID" "$FEISHU_APP_ID" FEISHU_APP_ID
-            prompt_secret "App Secret" "$FEISHU_APP_SECRET" FEISHU_APP_SECRET
+            while true; do
+                prompt_input "App ID" "$FEISHU_APP_ID" FEISHU_APP_ID
+                prompt_secret "App Secret" "$FEISHU_APP_SECRET" FEISHU_APP_SECRET
+                echo -en "  ${DIM}正在验证凭证..."
+                local res
+                res=$(curl -s -X POST -H "Content-Type: application/json" \
+                    -d "{\"app_id\":\"$FEISHU_APP_ID\",\"app_secret\":\"$FEISHU_APP_SECRET\"}" \
+                    https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal 2>/dev/null || echo "")
+                if echo "$res" | grep -q '"code":0'; then
+                    echo -e " ${NC}"
+                    print_success "凭证校验成功"
+                    break
+                else
+                    echo -e " 失败${NC}"
+                    print_error "凭证无效，请检查重试！"
+                    echo ""
+                fi
+            done
             ;;
         5)
             SETUP_QQ="yes"
